@@ -1,0 +1,6 @@
+tools/node_modules/
+tools/package-lock.json
+build/
+dist/
+test/shots/
+tools/*.jks

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>AfterZero: The First Cycle</title>
+<style>
+:root { --cyan:#6ff0ff; --past:#ffc77a; --present:#8fd3ff; --future:#d48cff; --ink:#e6edf6; --muted:#8796ab; --panel:rgba(8,12,20,.9); --line:#22324a; --sub-scale:1;
+  --sl: env(safe-area-inset-left,0px); --sr: env(safe-area-inset-right,0px); --st: env(safe-area-inset-top,0px); --sb: env(safe-area-inset-bottom,0px); }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin:0; height:100%; overflow:hidden; background:#000; color:var(--ink); font-family: "Roboto","Segoe UI",system-ui,sans-serif; user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none; }
+#view { position:fixed; inset:0; width:100%; height:100%; display:block; }
+#boot { position:fixed; inset:0; display:grid; place-items:center; background:#05070c; color:var(--cyan); font:600 14px monospace; letter-spacing:.2em; z-index:99; }
+/* HUD */
+#hud { position:fixed; inset:0; pointer-events:none; font-family: "Roboto Mono", ui-monospace, monospace; display:none; }
+body.ingame #hud { display:block; }
+#obj { position:absolute; left:calc(18px + var(--sl)); top:calc(14px + var(--st)); max-width:44vw; border-left:2px solid var(--cyan); padding-left:10px; font-size:11px; color:#bfe6f2; text-shadow:0 1px 3px #000; letter-spacing:.08em; }
+#obj b { display:block; font-family:system-ui,sans-serif; font-weight:600; font-size:15px; letter-spacing:0; color:#fff; margin-top:2px; }
+#states { position:absolute; right:calc(18px + var(--sr)); top:calc(12px + var(--st)); display:grid; gap:3px; justify-items:end; font-size:11px; }
+#states span { color:#ffffff55; padding-right:8px; border-right:3px solid transparent; }
+#states span.on { color:#fff; font-weight:700; font-size:13px; }
+#states span.on[data-s="0"] { color:var(--past); border-color:var(--past); } #states span.on[data-s="1"] { color:var(--present); border-color:var(--present); } #states span.on[data-s="2"] { color:var(--future); border-color:var(--future); }
+#states span.off { text-decoration:line-through; opacity:.4; }
+#timer { position:absolute; left:50%; top:calc(10px + var(--st)); transform:translateX(-50%); font-size:16px; color:var(--past); text-shadow:0 1px 4px #000; font-weight:600; }
+#timer.urgent { color:#ff6a50; }
+#detect { position:absolute; left:50%; top:calc(36px + var(--st)); transform:translateX(-50%); width:200px; height:6px; background:#0008; display:none; }
+#detect i { display:block; height:100%; width:0; background:#ffc060; } #detect.seen i { background:#ff4030; }
+#detect b { position:absolute; left:0; right:0; top:9px; text-align:center; font-size:10px; color:#fff; font-weight:600; text-shadow:0 1px 3px #000; }
+#toast { position:absolute; left:50%; top:calc(64px + var(--st)); transform:translateX(-50%); max-width:70vw; text-align:center; font-family:system-ui,sans-serif; font-size:14px; color:var(--past); text-shadow:0 1px 4px #000,0 0 2px #000; opacity:0; transition:opacity .3s; }
+#toast.show { opacity:1; }
+#prompt { position:absolute; left:50%; top:56%; transform:translateX(-50%); font-family:system-ui,sans-serif; font-size:14px; color:#fff; text-shadow:0 1px 4px #000; white-space:nowrap; }
+#prompt:not(:empty)::before { content:"\25CB  "; color:var(--cyan); }
+#held { position:absolute; left:calc(18px + var(--sl)); top:calc(64px + var(--st)); font-size:11px; color:var(--past); }
+#sub { position:absolute; left:50%; bottom:calc(118px + var(--sb)); transform:translateX(-50%); width:min(760px,64vw); text-align:center; font-family:system-ui,sans-serif; font-size:calc(15px * var(--sub-scale)); line-height:1.35; color:#fff; text-shadow:0 2px 5px #000,0 0 2px #000; opacity:0; transition:opacity .25s; background:rgba(0,0,0,.28); padding:6px 12px; border-radius:6px; }
+#sub.show { opacity:1; } #sub b { font-family:"Roboto Mono",monospace; color:var(--cyan); font-size:.8em; letter-spacing:.08em; margin-right:8px; }
+#loopbar { position:absolute; left:50%; top:calc(36px + var(--st)); transform:translateX(-50%); width:260px; height:3px; background:#ffffff22; display:none; }
+#loopbar i { display:block; height:100%; background:var(--past); width:0; } #loopbar span { position:absolute; top:6px; left:0; right:0; text-align:center; font-size:10px; color:#ffffffaa; }
+#card, #reveal { position:absolute; inset:0; display:grid; place-content:center; text-align:center; gap:6px; opacity:0; transition:opacity .8s; background:radial-gradient(ellipse at center,#000b 0%,#0000 70%); }
+#card.show, #reveal.show { opacity:1; }
+#card small, #reveal small { color:var(--cyan); letter-spacing:.25em; font-size:12px; }
+#card strong, #reveal strong { font-family: "Michroma","Eurostile","Arial Narrow",system-ui,sans-serif; font-weight:600; font-size:clamp(20px,4vw,38px); letter-spacing:.06em; color:#fff; text-shadow:0 2px 20px #000; }
+#card em { font-style:normal; color:#ffffffaa; font-size:13px; font-family:system-ui,sans-serif; }
+#reveal { background:rgba(0,0,0,.55); } #reveal p { max-width:62vw; margin:4px auto 0; font-family:system-ui,sans-serif; font-size:15px; color:#dfe9f5; line-height:1.45; }
+/* Touch layer */
+#touch { position:fixed; inset:0; display:none; }
+body.ingame #touch { display:block; }
+body.locked #touch .tb, body.locked #stick { opacity:.15; pointer-events:none; }
+#lookpad { position:absolute; inset:0; touch-action:none; }
+#stick { position:absolute; width:150px; height:150px; border-radius:50%; border:2px solid #ffffff30; background:#ffffff0d; display:none; pointer-events:none; }
+#stick.on { display:block; } #stick i { position:absolute; left:50%; top:50%; width:64px; height:64px; margin:-32px; border-radius:50%; background:#6ff0ff44; border:2px solid #6ff0ffaa; }
+.tb { position:absolute; border-radius:50%; border:2px solid rgba(255,255,255,.35); background:rgba(255,255,255,.08); color:#fff; font:700 11px "Roboto Mono",monospace; letter-spacing:.04em; display:grid; place-items:center; padding:0; touch-action:none; line-height:1.15; }
+.tb.down { background:rgba(111,240,255,.35); transform:scale(.94); }
+#bUse { width:84px; height:84px; right:calc(26px + var(--sr)); bottom:calc(92px + var(--sb)); font-size:14px; border-color:#6ff0ff88; color:var(--cyan); }
+#bUse.ready { background:rgba(111,240,255,.3); box-shadow:0 0 18px #6ff0ff88; }
+#bJump { width:60px; height:60px; right:calc(124px + var(--sr)); bottom:calc(36px + var(--sb)); }
+#bCrouch { width:60px; height:60px; right:calc(30px + var(--sr)); bottom:calc(16px + var(--sb)); }
+#bCrouch.toggled { background:rgba(255,200,120,.35); border-color:var(--past); }
+#bEcho { width:60px; height:60px; right:calc(124px + var(--sr)); bottom:calc(112px + var(--sb)); color:#9fd8ff; }
+#bHum { width:56px; height:56px; right:calc(40px + var(--sr)); bottom:calc(190px + var(--sb)); color:var(--past); }
+#statebar { position:absolute; left:50%; bottom:calc(12px + var(--sb)); transform:translateX(-50%); display:flex; gap:12px; }
+#statebar .tb { position:static; width:62px; height:62px; font-size:10px; }
+.tb.state[data-s="0"] { border-color:#ffc77a88; color:var(--past); } .tb.state[data-s="1"] { border-color:#8fd3ff88; color:var(--present); } .tb.state[data-s="2"] { border-color:#d48cff88; color:var(--future); }
+.tb.state.on { background:rgba(255,255,255,.22); box-shadow:0 0 14px currentColor; } .tb.state.off { opacity:.25; }
+.tb.sys { border-radius:6px; width:auto; height:30px; padding:0 10px; top:calc(92px + var(--st)); font-size:10px; }
+#bJournal { right:calc(70px + var(--sr)); } #bPause { right:calc(18px + var(--sr)); width:40px; }
+body.lefty #bUse { right:auto; left:calc(26px + var(--sl)); } body.lefty #bJump { right:auto; left:calc(124px + var(--sl)); } body.lefty #bCrouch { right:auto; left:calc(30px + var(--sl)); }
+body.lefty #bEcho { right:auto; left:calc(124px + var(--sl)); } body.lefty #bHum { right:auto; left:calc(40px + var(--sl)); }
+/* Panels */
+.panel { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.55); z-index:10; padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl)); }
+.panel.show { display:grid; }
+.box { background:var(--panel); border:1px solid var(--line); padding:18px 20px; min-width:min(520px,90vw); max-width:92vw; max-height:88vh; overflow:auto; display:grid; gap:10px; }
+.box.wide { width:min(820px,92vw); } .box h3 { margin:0 0 4px; font:600 15px "Roboto Mono",monospace; letter-spacing:.1em; color:var(--cyan); }
+.btn { font:600 14px system-ui,sans-serif; color:#fff; background:rgba(111,240,255,.08); border:1px solid #2c4660; border-left:3px solid var(--cyan); padding:13px 16px; text-align:left; touch-action:manipulation; }
+.btn:active { background:rgba(111,240,255,.25); } .btn.opt { font-weight:500; line-height:1.35; } .btn.disabled { opacity:.4; border-left-color:#555; }
+.btn.big { font-size:16px; padding:15px 22px; min-width:240px; } .btn.sq { padding:10px 16px; border-left-width:1px; text-align:center; }
+.paper { background:#ece5d3; color:#2a231c; padding:22px 26px; width:min(640px,90vw); max-height:86vh; overflow:auto; display:grid; gap:12px; box-shadow:0 20px 60px #000; }
+.paper h2 { margin:0; font:600 19px Georgia,serif; text-align:center; } .paper .body { white-space:pre-wrap; font:15px/1.55 Georgia,serif; }
+.paper .btn { color:#2a231c; background:#d8cfb8; border-color:#a89878; border-left-color:#7a6040; }
+#pJournal .body h4 { margin:12px 0 2px; color:var(--cyan); font:600 14px system-ui; } #pJournal .body p { margin:0; font:14px/1.5 system-ui; color:#d6e0ec; white-space:pre-wrap; }
+.rows { display:grid; gap:8px; } .row { display:grid; grid-template-columns:minmax(110px,1fr) auto minmax(140px,2fr) auto; gap:8px; align-items:center; }
+.row .lbl { font:600 12px "Roboto Mono",monospace; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; } .row .val { text-align:center; font:13px system-ui; }
+#pMenu { background:linear-gradient(90deg,rgba(0,0,0,.75),rgba(0,0,0,.15)); place-items:center start; padding-left:calc(6vw + var(--sl)); }
+.menu { display:grid; gap:10px; max-width:560px; } .menu .eyebrow { color:var(--cyan); font:600 12px "Roboto Mono",monospace; letter-spacing:.22em; }
+.menu h1 { margin:0; font: 600 clamp(28px,6vw,54px) "Michroma","Eurostile","Arial Narrow",system-ui,sans-serif; letter-spacing:.05em; }
+.menu .tag { margin:0 0 8px; color:#c6d2e0; font-size:14px; } .mbtns { display:grid; gap:8px; justify-items:start; } .menu .diff { font:12px "Roboto Mono",monospace; color:var(--past); margin:6px 0 0; }
+.chapters { position:fixed; right:calc(4vw + var(--sr)); top:50%; transform:translateY(-50%); display:none; gap:6px; max-height:86vh; overflow:auto; width:min(360px,40vw); }
+.chapters.show { display:grid; } .btn.chap small { display:block; font:10px "Roboto Mono",monospace; color:var(--cyan); letter-spacing:.12em; }
+#fade { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:50; }
+@media (max-height: 420px) { #obj b { font-size:13px; } .tb.sys { top:calc(76px + var(--st)); } #sub { bottom:calc(96px + var(--sb)); } }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud"></div>
+<div id="touch"></div>
+<div id="panels"></div>
+<div id="boot">AFTERZERO</div>
+<script src="lib/three.min.js"></script>
+<script src="lib/BufferGeometryUtils.js"></script>
+<script src="lib/CopyShader.js"></script>
+<script src="lib/LuminosityHighPassShader.js"></script>
+<script src="lib/EffectComposer.js"></script>
+<script src="lib/RenderPass.js"></script>
+<script src="lib/ShaderPass.js"></script>
+<script src="lib/UnrealBloomPass.js"></script>
+<script src="js/core.js"></script>
+<script src="js/render.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+<script src="js/levels/p00_prologue.js"></script>
+<script src="js/levels/l01.js"></script>
+<script src="js/levels/l02.js"></script>
+<script src="js/levels/l03.js"></script>
+<script src="js/levels/l04.js"></script>
+<script src="js/levels/l05.js"></script>
+<script src="js/levels/l06.js"></script>
+<script src="js/levels/l07.js"></script>
+<script src="js/levels/l08.js"></script>
+<script src="js/levels/p99_epilogue.js"></script>
+</body>
+</html>
