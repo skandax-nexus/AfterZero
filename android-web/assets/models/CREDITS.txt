@@ -1,0 +1,11 @@
+Character models (taken from the three.js examples repository, github.com/mrdoob/three.js, examples/models/gltf),
+re-processed for mobile (textures kept, meshes quantized/simplified, unused animations removed):
+
+  arin.glb, civilian_f.glb  - "Michelle" (Mixamo character, Adobe)            -> Arin, female townsfolk
+  civilian_m.glb            - Ready Player Me avatar (readyplayer.me.glb)      -> male townsfolk
+  keeper.glb                - "Soldier"/Vanguard (Mixamo character, Adobe)     -> Keepers and pursuers
+  anims.glb                 - "X Bot" animation set (Mixamo): idle, walk, run, sneak, agree, head-shake, sad
+                              (skeleton only; retargeted at load time by js/humans.js)
+
+Check each provider's terms (Mixamo / Ready Player Me) before commercial release, or replace these files with your
+own rigged characters: any Mixamo-skeleton glTF with the same file names works without code changes.

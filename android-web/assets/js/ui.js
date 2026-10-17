@@ -287,6 +287,8 @@
     ["Difficulty", () => AZ.diff.label(AZ.settings.difficulty), d => { AZ.settings.difficulty = (AZ.settings.difficulty + d + 3) % 3; }],
     ["Look sensitivity", () => AZ.settings.sens.toFixed(1) + "x", d => { AZ.settings.sens = Math.min(3, Math.max(0.3, +(AZ.settings.sens + d * 0.1).toFixed(1))); }],
     ["Invert look", () => (AZ.settings.invert ? "ON" : "OFF"), () => { AZ.settings.invert = !AZ.settings.invert; }],
+    ["Camera distance", () => ({ 0.8: "NEAR", 1: "NORMAL", 1.25: "FAR" })[AZ.settings.cam] || "NORMAL", d => { const c = [0.8, 1, 1.25]; AZ.settings.cam = c[(c.indexOf(AZ.settings.cam) + d + 3) % 3]; }],
+    ["Arin's look", () => (AZ.settings.arin === "m" ? "TAILORED COAT" : "STREET JACKET"), () => { AZ.settings.arin = AZ.settings.arin === "m" ? "f" : "m"; AZ.sim.rebuildAvatar(); }],
     ["Graphics", () => ["AUTO (adapts to keep it smooth)", "LOW - 30 fps battery saver", "MEDIUM", "HIGH - shadows"][AZ.settings.quality + 1], d => { AZ.settings.quality = ((AZ.settings.quality + 1 + d + 4) % 4) - 1; }],
     ["Thumb layout", () => (AZ.settings.left ? "LEFT-HANDED (look on left)" : "RIGHT-HANDED (move on left)"), () => { AZ.settings.left = !AZ.settings.left; }],
     ["Vibration", () => (AZ.settings.vibe ? "ON" : "OFF"), () => { AZ.settings.vibe = !AZ.settings.vibe; }],

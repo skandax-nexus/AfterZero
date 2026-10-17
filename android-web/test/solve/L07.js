@@ -18,7 +18,8 @@
     if (!G.following) throw new Error("group " + gi + " is not following");
     const [x0, z0] = path[0];
     const before = G.members[0].p.group.position.clone();
-    T.goto(x0, 0, z0); await T.wait(1500);
+    T.goto(x0, 0, z0);
+    await waitFor(() => G.members[0].p.group.position.distanceTo(before) >= 0.3, 10000);
     const moved = G.members[0].p.group.position.distanceTo(before);
     if (moved < 0.3) throw new Error("group " + gi + " did not move toward the player");
     T.goto(SAFE[0], 0, SAFE[1] + 2.4); T.face(SAFE[0], SAFE[1] + 12);

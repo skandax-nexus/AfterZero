@@ -55,6 +55,7 @@
     if (W) { R.scene.remove(W.root); W.root.traverse(o => { if (o.geometry && o.userData.merged) o.geometry.dispose(); }); }
     AZ.stopAmbient(); AZ.clearLevelHandlers(); R.clearLights();
     W = null; L = null; focus = null;
+    AZ.sim.hideAvatar();
     document.body.classList.remove("ingame");
   }
   G.complete = async () => {
@@ -85,6 +86,7 @@
     if (performance.now() - lastShift < 700) return;
     if (AZ.sim.overlapsSolid(W, P.pos, P.height, P.radius, 1 << s)) { UI.toast("Something occupies this space in the " + AZ.STATE_NAMES[s] + ".", 2.2); AZ.sfx("blocked"); R.ripple(0.25); AZ.vibrate(40); return; }
     const from = W.state;
+    if (R.transition) R.transition();
     W.state = s; lastShift = performance.now();
     applyState(false);
     R.ripple(1); AZ.vibrate(25);
@@ -107,11 +109,11 @@
     if (!W || UI.locked()) return;
     if (UI.speaking() && !focus) { UI.skipLine(); return; }
     const it = AZ.sim.pick(W, (x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
-    if (it) { const d = it.pos.distanceTo(R.camera.position); if (d <= it.radius + 1.2) AZ.sim.use(W, it); else UI.toast("Move closer.", 1.4); }
+    if (it) { const d = it.pos.distanceTo(AZ.sim.eye()); if (d <= it.radius + 1.2) AZ.sim.use(W, it); else UI.toast("Move closer.", 1.4); }
   };
 
   // ---------------- death / respawn ----------------
-  function teleport(pos, yaw) { P.pos.copy(pos); P.vy = 0; P.yaw = yaw; P.pitch = 0; }
+  function teleport(pos, yaw) { P.pos.copy(pos); P.vy = 0; P.yaw = yaw; P.pitch = -0.12; P.face = yaw + Math.PI; P.pivotY = null; P.camDist = 3; }
   G.die = async msg => {
     if (!W || P.dying) return;
     P.dying = true;
@@ -196,7 +198,7 @@
   // ---------------- test hooks (used by test/solve/*.js; harmless in the app) ----------------
   AZ.test = {
     goto(x, y, z) { P.pos.set(x, y, z); P.vy = 0; },
-    face(x, z) { P.yaw = Math.atan2(-(x - P.pos.x), -(z - P.pos.z)); P.pitch = -0.15; },
+    face(x, z) { P.yaw = Math.atan2(-(x - P.pos.x), -(z - P.pos.z)); P.face = P.yaw + Math.PI; P.pitch = -0.15; },
     near(filter) { const W2 = W; return W2.interactables.filter(it => it.enabled && (!filter || (it.prompt || "").toLowerCase().includes(filter.toLowerCase()))).map(it => ({ prompt: it.prompt, pos: it.pos.toArray().map(v => +v.toFixed(2)), mask: it.mask })); },
     /** Walk-free use: teleport next to the first enabled interactable whose prompt contains text, shift to its state, use it. */
     async use(text, opts = {}) {
@@ -220,8 +222,10 @@
   };
 
   // ---------------- boot ----------------
-  window.addEventListener("load", () => {
+  window.addEventListener("load", async () => {
     R.init(document.getElementById("view"));
+    const boot = document.getElementById("boot"); if (boot) boot.textContent = "AFTERZERO  ·  LOADING VEYRA";
+    await AZ.humans.load();
     UI.build();
     addEventListener("resize", () => R.resize());
     document.addEventListener("visibilitychange", () => { if (document.hidden) window.azPause(); });

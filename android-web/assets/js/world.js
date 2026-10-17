@@ -20,7 +20,7 @@
 
     const W = {
       def, root, shared, groups,
-      colliders: [], interactables: [], zones: [], npcs: [], keepers: [], pursuers: [], hazards: [], fires: [],
+      colliders: [], interactables: [], zones: [], npcs: [], keepers: [], pursuers: [], people: [], hazards: [], fires: [],
       updaters: [], resetters: [], movers: [], objectives: [], echoes: [],
       state: def.start !== undefined ? def.start : 1, allowed: def.allowed || 7,
       spawn: { pos: V3(0, 0, 0), yaw: 0, state: 1 }, checkpoint: null, loop: null, timer: null,
@@ -135,22 +135,35 @@
       g = g0(g);
       const post = style === "gas" ? "brass" : style === "neon" ? "obsidian" : "iron";
       L.cyl(g, 0.07, h, post, x, y + h / 2, z, { seg: 8 });
+      L.cyl(g, 0.15, 0.55, post, x, y + 0.275, z, { seg: 8 }); // cast base
       const head = style === "gas" ? "warm" : style === "neon" ? "neonC" : "neonA";
       const hm = L.mesh(g, "sphere", head, x, y + h, z, 0.4, 0.4, 0.4); hm.castShadow = false;
-      return L.light(g, style === "gas" ? 0xffb469 : style === "neon" ? 0x40d8ff : 0xff9a48, style === "neon" ? 1.6 : 2.0, 12, x, y + h - 0.2, z);
+      const hood = L.mesh(g, style === "gas" ? "cone4" : "cone", post, x, y + h + 0.32, z, style === "gas" ? 0.62 : 0.72, 0.26, style === "gas" ? 0.62 : 0.72);
+      if (style === "gas") hood.rotation.y = Math.PI / 4;
+      const col = style === "gas" ? 0xffb469 : style === "neon" ? 0x40d8ff : 0xff9a48;
+      if (R.lampFX) R.lampFX(g, x, y, z, h, col); // halo + light cone + ground pool (additive, no real light)
+      return L.light(g, col, style === "neon" ? 1.6 : 2.0, 12, x, y + h - 0.2, z);
     };
     L.building = (g, x, z, w, h, d, wallMat = "plaster", winMat = "window", seed = 1, sign = null, signColor = "#ffd28a") => {
       g = g0(g);
       L.box(g, w, h, d, wallMat, x, h / 2, z);
       L.box(g, w + 0.5, 0.4, d + 0.5, "woodDark", x, h + 0.2, z, { solid: false });
+      // facade articulation: plinth, string courses, sills + lintels, some unlit (reflective) windows
+      const trim = wallMat === "stoneWet" ? "stoneWet" : wallMat === "plasterCold" || wallMat === "concrete" ? "concrete" : "stone";
+      L.box(g, w + 0.14, 0.7, d + 0.14, trim, x, 0.35, z, { solid: false });
       let s = seed * 9301 + 49297;
       const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
       const floors = Math.max(1, Math.floor((h - 1.5) / 3)), cols = Math.max(1, Math.floor(w / 2.4));
+      for (let f = 1; f < floors; f++) L.box(g, w + 0.1, 0.14, d + 0.1, trim, x, 0.6 + f * 3, z, { solid: false, shadow: false, noEcho: true });
+      const nb = { solid: false, noEcho: true, shadow: false };
       for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) {
         if (rnd() < 0.35) continue;
-        const wx = x - w / 2 + (c + 0.5) * w / cols, wy = 2 + f * 3;
-        L.box(g, 1.1, 1.4, 0.06, winMat, wx, wy, z - d / 2 - 0.03, { solid: false, noEcho: true, shadow: false });
-        L.box(g, 1.1, 1.4, 0.06, winMat, wx, wy, z + d / 2 + 0.03, { solid: false, noEcho: true, shadow: false });
+        const wx = x - w / 2 + (c + 0.5) * w / cols, wy = 2 + f * 3, wm = rnd() < 0.28 ? "windowDark" : winMat;
+        for (const sd of [-1, 1]) {
+          L.box(g, 1.1, 1.4, 0.06, wm, wx, wy, z + sd * (d / 2 + 0.03), nb);
+          L.box(g, 1.34, 0.09, 0.2, trim, wx, wy - 0.75, z + sd * (d / 2 + 0.08), nb);
+          L.box(g, 1.3, 0.12, 0.1, trim, wx, wy + 0.76, z + sd * (d / 2 + 0.05), nb);
+        }
       }
       if (sign) L.label(g, sign, x, Math.min(h - 1, 4.2), z - d / 2 - 0.08, Math.PI, 0.55, signColor, "rgba(10,12,18,0.85)");
     };
@@ -159,7 +172,7 @@
       const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
       for (let i = 0; i < n; i++) {
         const a = rnd() * Math.PI * 2, r = r0 + rnd() * (r1 - r0), h = 15 + rnd() * 50;
-        const m = L.box(g, 8 + rnd() * 12, h, 8 + rnd() * 12, mat, cx + Math.cos(a) * r, h / 2, cz + Math.sin(a) * r, { solid: false, ry: rnd() * 3, noEcho: true, shadow: false });
+        const m = L.box(g, 8 + rnd() * 12, h, 8 + rnd() * 12, R.towerMat ? R.towerMat(mat) : mat, cx + Math.cos(a) * r, h / 2, cz + Math.sin(a) * r, { solid: false, ry: rnd() * 3, noEcho: true, shadow: false });
       }
     };
     L.crystals = (g, n, cx, cz, w, d, y = 0) => {
@@ -185,8 +198,27 @@
       for (let i = 1; i < 16; i += 2) { const f = L.mesh(g, "cone4", mats[i % 3], pts[i].x, pts[i].y - 0.35, pts[i].z, 0.5, 0.6, 0.5); f.rotation.x = Math.PI; f.userData.noEcho = true; }
     };
 
-    /** Stylised person mesh (body, head, visor band, arms). Returns {group, armL, armR, head, body}. */
+    /** Person: a skinned, animated human (AZ.humans) or, if the models failed to load, the stylised figure.
+     *  opts: {y, kind:'f'|'m'|'keeper', name, seed, holo}. Returns {group, armL, armR, head, body, human}. */
     L.person = (g, x, z, coat = "navy", yaw = 0, scale = 1, opts = {}) => {
+      if (!AZ.humans.ready) return L.toyPerson(g, x, z, coat, yaw, scale, opts);
+      g = g0(g);
+      const grp = new THREE.Group(); grp.position.set(x, opts.y || 0, z); grp.rotation.y = yaw; grp.scale.setScalar(scale);
+      grp.userData.dynamic = true; grp.userData.noEcho = true;
+      const kind = opts.kind || AZ.humans.kindFor(opts.name, ++personCount);
+      const human = AZ.humans.make(kind, { coat: typeof coat === "string" ? coat : null, seed: opts.seed !== undefined ? opts.seed : personCount * 7919 + (opts.name ? opts.name.length * 31 : 0) });
+      grp.add(human.root);
+      // pose handles kept for older level scripts (now driven by the skeleton)
+      const body = new THREE.Group(), head = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
+      grp.add(body); body.add(head, armL, armR);
+      g.add(grp);
+      const person = { group: grp, body, head, armL, armR, human, managed: false, last: grp.position.clone() };
+      W.people.push(person);
+      return person;
+    };
+    let personCount = 0;
+    /** Stylised person mesh (body, head, visor band, arms). Returns {group, armL, armR, head, body}. */
+    L.toyPerson = (g, x, z, coat = "navy", yaw = 0, scale = 1, opts = {}) => {
       g = g0(g);
       const grp = new THREE.Group(); grp.position.set(x, opts.y || 0, z); grp.rotation.y = yaw; grp.scale.setScalar(scale);
       grp.userData.dynamic = true; grp.userData.noEcho = !opts.echo;
@@ -351,8 +383,10 @@
      *  cond:[{flag|holding, lines, sets}], changedFlag, changedRoute, changedTalk, scale, named(default true), barks(world reactions)} */
     L.npc = o => {
       const g = o.group || shared;
-      const p = L.person(g, o.at[0], o.at[1], o.coat || "navy", o.yaw || 0, o.scale || 1, { y: o.y || 0, hood: o.hood, skin: o.skin, visor: o.visor });
-      if (o.holo) p.group.traverse(m => { if (m.isMesh) { m.material = o.holo === "magenta" ? R.MAT.holoM : o.holo === "amber" ? R.MAT.holoA : R.MAT.holoC; m.castShadow = false; } });
+      const p = L.person(g, o.at[0], o.at[1], o.coat || "navy", o.yaw || 0, o.scale || 1, { y: o.y || 0, hood: o.hood, skin: o.skin, visor: o.visor, name: o.name, kind: o.kind });
+      if (o.holo && p.human) p.human.setHolo(o.holo);
+      else if (o.holo) p.group.traverse(m => { if (m.isMesh) { m.material = o.holo === "magenta" ? R.MAT.holoM : o.holo === "amber" ? R.MAT.holoA : R.MAT.holoC; m.castShadow = false; } });
+      p.managed = true;
       const n = { o, p, name: o.name || "Resident", pos: p.group.position, route: o.route || [], idx: 0, wait: 0, phase: Math.random() * 6, talkIdx: 0, approached: false, mask: o.mask || maskOf(g), y: o.y || 0 };
       const start = p.group.position.clone(), startYaw = o.yaw || 0;
       n.reset = () => { p.group.position.copy(start); p.group.rotation.y = startYaw; n.idx = 0; n.wait = 0; };
@@ -386,6 +420,7 @@
     L.crowd = (g, cx, cz, w, d, count, opts = {}) => {
       const coats = ["navy", "ochre", "olive", "burgundy", "grey", "white", "teal", "red"];
       const out = [];
+      if (AZ.humans.ready && R.preset().scale < 0.7) count = Math.ceil(count * 0.6);
       for (let i = 0; i < count; i++) {
         const x = cx + (Math.random() - 0.5) * w, z = cz + (Math.random() - 0.5) * d;
         const route = [[x, z, 2 + Math.random() * 4, i % 3 === 0 ? "work" : "idle"], [cx + (Math.random() - 0.5) * w, cz + (Math.random() - 0.5) * d, 2 + Math.random() * 4, i % 4 === 1 ? "talk" : "look"]];
@@ -398,7 +433,8 @@
     /** o: {name, mode:'hunter'|'watcher', group, at:[x,z], path:[[x,z]], speed, chase, view, angle, mask, disabledBy, alarmFlag, caught} */
     L.keeper = o => {
       const g = o.group || shared;
-      const p = L.person(g, o.at[0], o.at[1], "obsidian", o.yaw || 0, 1.05, { hood: true, visor: false, y: o.y || 0 });
+      const p = L.person(g, o.at[0], o.at[1], "obsidian", o.yaw || 0, 1.05, { hood: true, visor: false, y: o.y || 0, kind: "keeper" });
+      p.managed = true;
       const lantern = L.mesh(p.group, "sphere", "warm", 0.3, 1.2, 0.35, 0.18, 0.22, 0.18); lantern.castShadow = false;
       const coneLen = (o.view || 11) * (o.mode === "watcher" ? 0.8 : 1);
       const coneGeo = new THREE.ConeGeometry(Math.tan(((o.angle || 70) / 2) * Math.PI / 180) * coneLen, coneLen, 20, 1, true);
@@ -417,7 +453,8 @@
     };
     /** Scripted chaser along a lane. o: {name, group, at:[x,z], lane:[[x,z]], startFlag, stopFlag, speed, caught} */
     L.pursuer = o => {
-      const p = L.person(o.group || shared, o.at[0], o.at[1], "obsidian", o.yaw || 0, 1.15, { hood: true, y: o.y || 0 });
+      const p = L.person(o.group || shared, o.at[0], o.at[1], "obsidian", o.yaw || 0, 1.12, { hood: true, y: o.y || 0, kind: "keeper" });
+      p.managed = true;
       const c = { o, p, lane: o.lane || [], idx: 0, running: false, delay: 0, start: p.group.position.clone(), speed: (o.speed || 4.6) * (0.85 + 0.15 * AZ.diff.perception()), bark: 0, mask: o.mask || 7 };
       L.when([o.startFlag], () => { if (!AZ.get(o.stopFlag)) { c.running = true; c.delay = o.delay || 1.5; AZ.sfx("alert"); AZ.vibrate(60); } });
       if (o.stopFlag) L.onFlag(o.stopFlag, v => { if (v) c.running = false; });
@@ -597,7 +634,7 @@
   // Simulation
   // =====================================================================
   const S = (AZ.sim = {});
-  const P = (AZ.player = { pos: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, height: 1.7, radius: 0.32, grounded: false, crouch: false, sprint: false, stepT: 0, ground: null, dying: false });
+  const P = (AZ.player = { pos: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, height: 1.7, radius: 0.32, grounded: false, crouch: false, sprint: false, stepT: 0, ground: null, dying: false, face: 0, camDist: 3, pivotY: null, avatar: null });
   S.input = { mx: 0, my: 0, lookX: 0, lookY: 0, jump: false, crouch: false, echo: false };
 
   function insideRect(c, x, z, pad) {
@@ -662,6 +699,33 @@
     return false;
   };
 
+  /** Fraction (0..1) along a->b before the camera would enter solid geometry. */
+  S.camProbe = (W, a, b, pad = 0.18) => {
+    const len = a.distanceTo(b), steps = Math.max(1, Math.ceil(len / 0.15));
+    for (let i = 1; i <= steps; i++) {
+      const f = i / steps, x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f, z = a.z + (b.z - a.z) * f;
+      for (const c of W.colliders) {
+        if (!c.on || c.water || !W.activeMask(c.mask)) continue;
+        const r = insideRect(c, x, z, pad);
+        if (!r.inside) continue;
+        const top = c.ramp ? topAt(c, r) : c.y1;
+        if (y >= c.y0 - pad && y <= top + pad) return Math.max(0, (i - 1) / steps);
+      }
+    }
+    return 1;
+  };
+  const camV = { pivot: new THREE.Vector3(), want: new THREE.Vector3(), fwd: new THREE.Vector3() };
+  function ensureAvatar() {
+    if (P.avatar || !AZ.humans.ready) return;
+    P.avatar = AZ.humans.make(AZ.settings.arin === "m" ? "m" : "arin", { seed: 4, coat: AZ.settings.arin === "m" ? "teal" : null });
+    P.avatar.root.traverse(o => { if (o.isMesh) o.userData.player = true; });
+    P.avatarGroup = new THREE.Group(); P.avatarGroup.add(P.avatar.root); R.scene.add(P.avatarGroup);
+    // soft fill from the camera side so Arin reads against night scenes (like a shoulder lantern)
+    P.fill = new THREE.PointLight(0xdfe8ff, 1.1, 6, 2); R.scene.add(P.fill);
+  }
+  S.rebuildAvatar = () => { if (!P.avatarGroup) return; R.scene.remove(P.avatarGroup, P.fill); P.avatar = P.avatarGroup = null; };
+  S.hideAvatar = () => { if (P.avatarGroup) { P.avatarGroup.visible = false; P.fill.intensity = 0; } };
+
   S.step = (W, dt, t) => {
     const inp = S.input, locked = AZ.ui.locked();
     // ---- movers (record collider deltas for riding) ----
@@ -679,7 +743,7 @@
       if (!locked) {
         const s = AZ.settings.sens;
         P.yaw -= inp.lookX * 0.0042 * s; P.pitch -= inp.lookY * 0.0042 * s * (AZ.settings.invert ? -1 : 1);
-        P.pitch = Math.max(-1.35, Math.min(1.35, P.pitch));
+        P.pitch = Math.max(-1.0, Math.min(0.6, P.pitch));
       }
       inp.lookX = inp.lookY = 0;
       let mx = locked ? 0 : inp.mx, my = locked ? 0 : inp.my;
@@ -693,10 +757,18 @@
       const dirx = (fx * my + rx * mx), dirz = (fz * my + rz * mx);
       const dl = Math.hypot(dirx, dirz) || 1;
       P.pos.x += dirx / dl * speed * nm * dt; P.pos.z += dirz / dl * speed * nm * dt;
+      P.moving = nm > 0.08 ? speed * nm : 0;
+      if (nm > 0.08) P.face += angDiff(Math.atan2(dirx, dirz), P.face) * Math.min(1, dt * 10);
       P.height += ((P.crouch ? 1.1 : 1.7) - P.height) * Math.min(1, dt * 8);
       // ride platforms
       if (P.grounded && P.ground) { const mv = W.movers.find(m => m.collider === P.ground); if (mv && mv.platform && mv.delta) { P.pos.add(mv.delta); P.yaw += mv.dyaw || 0; } }
       pushOut(W, P.pos, P.height, P.radius);
+      // people are solid: slide around townsfolk instead of walking through them
+      for (const n of W.npcs) {
+        if (!n.p.human || !n.p.group.visible || !W.activeMask(n.mask) || n.o.holo) continue;
+        const g = n.p.group.position, dx = P.pos.x - g.x, dz = P.pos.z - g.z, d = Math.hypot(dx, dz), min = P.radius + 0.3 * n.p.group.scale.x;
+        if (d < min && d > 1e-4 && Math.abs(P.pos.y - g.y) < 1.5) { P.pos.x = g.x + dx / d * min; P.pos.z = g.z + dz / d * min; }
+      }
       // gravity + ground
       const g = S.groundAt(W, P.pos.x, P.pos.y, P.pos.z);
       if (inp.jump && P.grounded && !locked) { P.vy = 4.6; P.grounded = false; }
@@ -713,12 +785,41 @@
         if (P.stepT <= 0) { P.stepT = 0.5; AZ.sfx("step", P.crouch ? 0.08 : P.sprint ? 0.35 : 0.2, 0.9 + Math.random() * 0.2); AZ.emit("noise", P.pos.clone(), P.crouch ? 0.1 : P.sprint ? 1 : 0.45); }
       }
     }
-    // camera
+    // ---- third-person camera: over-the-shoulder orbit with collision ----
     const cam = R.camera;
-    const bob = P.grounded ? Math.sin(t * 10) * 0.025 * Math.min(1, Math.hypot(inp.mx, inp.my)) : 0;
-    cam.position.set(P.pos.x, P.pos.y + P.height - 0.12 + bob, P.pos.z);
+    ensureAvatar();
+    const pv = camV.pivot, want = camV.want, fwd = camV.fwd;
+    const pyT = P.pos.y + P.height * 0.88;
+    P.pivotY = P.pivotY === null || Math.abs(P.pivotY - pyT) > 3 ? pyT : P.pivotY + (pyT - P.pivotY) * Math.min(1, dt * 10);
+    const cp = Math.cos(P.pitch);
+    fwd.set(-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp);
+    const shoulder = 0.42, rx2 = Math.cos(P.yaw), rz2 = -Math.sin(P.yaw);
+    pv.set(P.pos.x + rx2 * shoulder, P.pivotY, P.pos.z + rz2 * shoulder);
+    const wantDist = (P.sprint ? 3.5 : P.crouch ? 2.6 : 3.1) * (W.def.camDist || 1) * (AZ.settings.cam || 1);
+    want.copy(pv).addScaledVector(fwd, -wantDist);
+    const head = new THREE.Vector3(P.pos.x, P.pivotY, P.pos.z);
+    const side = S.camProbe(W, head, pv, 0.12);           // shoulder offset blocked by a wall: pull to centre
+    if (side < 1) pv.lerpVectors(head, pv, side);
+    want.copy(pv).addScaledVector(fwd, -wantDist);
+    const hit = S.camProbe(W, pv, want) * wantDist;
+    P.camDist = hit < P.camDist ? hit : P.camDist + (hit - P.camDist) * Math.min(1, dt * 3);
+    cam.position.copy(pv).addScaledVector(fwd, -Math.max(0.25, P.camDist));
     cam.rotation.set(P.pitch, P.yaw, 0);
-    const targetFov = P.sprint ? 78 : 70;
+    if (P.avatarGroup) {
+      P.avatarGroup.visible = P.camDist > 0.85 && !W.def.hideAvatar;
+      P.fill.position.copy(cam.position).lerp(head, 0.35); P.fill.position.y += 0.5;
+      P.avatarGroup.position.copy(P.pos); P.fill.intensity = 1.1;
+      P.avatarGroup.rotation.y = P.face;
+      const a = P.avatar;
+      if (P.dying) a.play("sad", 0.2);
+      else if (!P.grounded) a.play("run", 0.2, 0.35);
+      else if (P.crouch) a.play("crouch", 0.25);
+      else if (P.moving > 4.5) a.play("run", 0.2, P.moving / 5.6);
+      else if (P.moving > 0) a.play("walk", 0.2, Math.max(0.5, P.moving / 1.55));
+      else a.play("idle", 0.3);
+      a.update(dt, 0);
+    }
+    const targetFov = P.sprint ? 66 : 60;
     if (Math.abs(cam.fov - targetFov) > 0.1) { cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 6); cam.updateProjectionMatrix(); }
 
     // ---- zones ----
@@ -735,6 +836,7 @@
     });
 
     // ---- NPCs ----
+    if (AZ.humans.ready) AZ.humans.beginFrame(cam);
     W.npcs.forEach(n => {
       const on = W.activeMask(n.mask);
       n.p.group.visible = on;
@@ -763,6 +865,16 @@
         }
       }
       if (dP > 7) n.approached = false;
+      if (n.p.human) {
+        const h = n.p.human, sp = o.speed || 1.3;
+        if (walking) h.play(sp > 3 ? "run" : "walk", 0.3, sp > 3 ? sp / 5.6 : sp / 1.55);
+        else if (o.named !== false && dP < 3 && AZ.ui.speaking()) h.play("talk", 0.4);
+        else h.play(act === "talk" ? "talk" : act === "work" || act === "carry" ? "nod" : "idle", 0.4);
+        const cd = R.camera.position.distanceTo(grp.position);
+        h.update(dt, cd, AZ.humans.seen(grp, cd));
+        if (n.tag) n.tag.rotation.y = Math.atan2(R.camera.position.x - grp.position.x, R.camera.position.z - grp.position.z) - grp.rotation.y;
+        return;
+      }
       // procedural animation
       n.phase += dt;
       const sw = walking ? Math.sin(n.phase * 7) * 0.55 : 0;
@@ -776,6 +888,19 @@
       if (act === "look") n.p.head.rotation.y = Math.sin(n.phase * 0.7) * 0.8;
       if (n.tag) n.tag.rotation.y = Math.atan2(P.pos.x - grp.position.x, P.pos.z - grp.position.z) - grp.rotation.y;
     });
+
+    // ---- scripted people (moved by level code): animate from their own motion ----
+    for (const pp of W.people) {
+      if (pp.managed) continue;
+      const g = pp.group, on = isVisible(g);
+      const sp = on ? Math.hypot(g.position.x - pp.last.x, g.position.z - pp.last.z) / Math.max(dt, 1e-3) : 0;
+      pp.last.copy(g.position);
+      pp.speed = (pp.speed || 0) + (sp - (pp.speed || 0)) * Math.min(1, dt * 8);
+      if (!on) continue;
+      pp.human.play(pp.speed > 3.2 ? "run" : pp.speed > 0.25 ? "walk" : "idle", 0.3, pp.speed > 3.2 ? pp.speed / 5.6 : Math.max(0.6, pp.speed / 1.55));
+      const cd = R.camera.position.distanceTo(g.position);
+      pp.human.update(dt, cd, AZ.humans.seen(g, cd));
+    }
 
     // ---- keepers ----
     let maxDet = 0;
@@ -814,6 +939,13 @@
         if (k.wait > 0) { k.wait -= dt; grp.rotation.y += Math.sin(t * 0.9) * dt * 0.8; }
         else if (moveTo(k.path[k.idx][0], k.path[k.idx][1], k.speed)) { k.idx = (k.idx + 1) % k.path.length; k.wait = k.o.pause || 2; }
       }
+      if (k.p.human) {
+        const moved = grp.position.distanceTo(k.lastPos || grp.position) / Math.max(dt, 1e-3); k.lastPos = (k.lastPos || new THREE.Vector3()).copy(grp.position);
+        k.p.human.play(moved > 3 ? "run" : moved > 0.3 ? "walk" : "idle", 0.25, moved > 3 ? moved / 5.6 : Math.max(0.6, moved / 1.55));
+        const cd = R.camera.position.distanceTo(grp.position);
+        k.p.human.update(dt, cd, AZ.humans.seen(grp, cd, 70));
+        return;
+      }
       // animate legs/arms
       const sw = Math.sin(t * 7) * 0.5; k.p.armL.rotation.x = sw; k.p.armR.rotation.x = -0.9;
     });
@@ -822,6 +954,7 @@
     // ---- pursuers ----
     W.pursuers.forEach(c => {
       c.p.group.visible = W.activeMask(c.mask);
+      if (c.p.human) { c.p.human.play(c.running && c.delay <= 0 && !P.dying ? "run" : "idle", 0.25, c.speed / 5.6); const cd = R.camera.position.distanceTo(c.p.group.position); c.p.human.update(dt, cd, AZ.humans.seen(c.p.group, cd, 70)); }
       if (!c.running || P.dying) return;
       if (c.delay > 0) { c.delay -= dt; return; }
       const grp = c.p.group, d = Math.hypot(P.pos.x - grp.position.x, P.pos.z - grp.position.z);
@@ -902,11 +1035,11 @@
   /** Interactable in focus: nearest usable within reach, roughly in front of the camera. */
   S.focus = W => {
     let best = null, bestScore = Infinity;
-    const cam = R.camera, fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(R.camera.quaternion), eye = S.eye();
     for (const it of W.interactables) {
       if (!it.enabled || !W.activeMask(it.mask) || (it.visibleIf && !it.visibleIf())) continue;
       if (it.mesh && !isVisible(it.mesh)) continue;
-      const to = it.pos.clone().sub(cam.position);
+      const to = it.pos.clone().sub(eye);
       const d = to.length();
       if (d > it.radius + 0.6) continue;
       const ang = fwd.angleTo(to.normalize());
@@ -916,6 +1049,8 @@
     }
     return best;
   };
+  /** Arin's eye point (interaction reach is measured from the character, not the orbit camera). */
+  S.eye = () => new THREE.Vector3(P.pos.x, P.pos.y + P.height - 0.12, P.pos.z);
   function isVisible(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
   S.use = async (W, it) => {
     if (!it) return;
@@ -933,7 +1068,7 @@
     const meshes = [];
     W.interactables.forEach(it => { if (it.mesh && it.enabled && W.activeMask(it.mask)) it.mesh.traverse(o => { if (o.isMesh) meshes.push(o); }); });
     const hits = ray.intersectObjects(meshes, false);
-    for (const h of hits) { const it = h.object.userData.interact || findIt(W, h.object); if (it && h.distance < it.radius + 2.5 && isVisible(h.object)) return it; }
+    for (const h of hits) { const it = h.object.userData.interact || findIt(W, h.object); if (it && it.pos.distanceTo(S.eye()) < it.radius + 2.5 && isVisible(h.object)) return it; }
     return null;
   };
   function findIt(W, o) { while (o) { const it = W.interactables.find(i => i.mesh === o); if (it) return it; o = o.parent; } return null; }

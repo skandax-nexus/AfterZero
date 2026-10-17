@@ -8,8 +8,10 @@ const levels = args.filter(a => !a.startsWith("--"));
 const seconds = +(opt("seconds") || 8), shots = opt("shots") || path.join(__dirname, "shots"), script = opt("script");
 fs.mkdirSync(shots, { recursive: true });
 (async () => {
-  const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell", args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required"] });
+  const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell", args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required", "--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
+  // --quality=0|1|2 pins the graphics preset (walkthroughs run faster on Low under SwiftShader)
+  if (opt("quality") !== null) await page.addInitScript(q => { try { const s = JSON.parse(localStorage.getItem("az1_settings") || "{}"); s.quality = q; localStorage.setItem("az1_settings", JSON.stringify(s)); } catch (e) { } }, +opt("quality"));
   const errors = [];
   page.on("console", m => { if (m.type() === "error" || m.type() === "warning") errors.push("[" + m.type() + "] " + m.text()); });
   page.on("pageerror", e => errors.push("[pageerror] " + e.message + "\n" + (e.stack || "").split("\n").slice(0, 4).join("\n")));

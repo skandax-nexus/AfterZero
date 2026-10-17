@@ -7,7 +7,7 @@
   const faceDoor = () => { const d = W().L06.door.position; T.face(d.x, d.z); };
   try {
     await T.wait(600); T.skipTalk();
-    T.goto(0, 0, 1.6); await T.wait(500); T.skipTalk();
+    T.goto(0, 0, 1.6); await waitFor("L06.nurseryReached", 10000); T.skipTalk();
     if (!AZ.get("L06.nurseryReached")) return fail("nursery");
     // shapes: each needs two quarter-turns, in its own state
     for (const what of ["carved wooden star", "dented tin moon", "cube of light"]) for (let i = 0; i < 2; i++) await T.use(what);
