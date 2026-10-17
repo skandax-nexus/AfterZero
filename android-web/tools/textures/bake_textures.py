@@ -202,36 +202,40 @@ def lines(n, count, seed, length=(0.02, 0.12), angle=None, width=1.0):
 # world tile size (metres) is listed in SETS and mirrored in render.js R.TEXTURES
 # =====================================================================================================================
 def tex_cobble(n):
-    """Wet-capable granite setts / cobbles in staggered rows with dirty sand joints."""
+    """Wet-capable granite setts / cobbles in staggered rows with sandy, dirt-filled joints."""
     x, y = grid(n)
-    wx = x + 0.010 * fbm(x, y, 5, 3, 11)
-    wy = y + 0.010 * fbm(x, y, 5, 3, 12)
-    cols, rows = 12, 14
-    F1, F2, ID, DX, DY = voronoi(wx, wy, cols, rows, 3, jitter=0.45, stagger=0.5)
-    e = F2 - F1 + 0.004 * fbm(x, y, 40, 2, 13)
-    stone = sstep(0.003, 0.016, e)
+    wx = x + 0.014 * fbm(x, y, 6, 3, 11)
+    wy = y + 0.014 * fbm(x, y, 6, 3, 12)
+    cols, rows = 11, 13
+    F1, F2, ID, DX, DY = voronoi(wx, wy, cols, rows, 3, jitter=0.5, stagger=0.5)
+    s = n / 512.0
+    e = blur(F2 - F1, 2.5 * s) + 0.005 * fbm(x, y, 36, 3, 13)
+    stone = sstep(0.006, 0.016, e)
+    prof = sstep(0.006, 0.05, e)  # rounded profile from the joint up to the crown
     cell = 1.0 / cols
-    dome = np.clip(1 - (F1 / (cell * 0.62)) ** 2, 0, 1)
     tilt = per_id(ID, 14, 2, -1, 1)
     slope = (tilt[..., 0] * DX + tilt[..., 1] * DY) / cell
-    h = stone ** 0.55 * (5.0 + 2.0 * dome + 0.9 * slope) + 0.6 * fbm(x, y, 64, 3, 15) * stone
-    h += 0.35 * fbm(x, y, 128, 2, 16)
-    base = palette(ID, 17, [lin(0x77736e), lin(0x5f5d5c), lin(0x847a6c), lin(0x4f4b48), lin(0x6c665e), lin(0x8a8378)],
-                   [3, 3, 2, 2, 2, 1])
-    tone = 0.82 + 0.36 * per_id(ID, 18)
-    alb = base * tone[..., None]
-    speck = perlin(x, y, 160, 160, 19) + 0.5 * perlin(x, y, 320, 320, 20)
-    alb *= (1 + 0.18 * speck)[..., None]
-    alb = mixc(alb, alb * 1.5, sstep(0.9, 1.3, speck) * 0.6)
-    blotch = fbm(x, y, 4, 4, 21)
-    alb *= (0.9 + 0.2 * blotch)[..., None]
-    joint = lin(0x3a3128) * (0.75 + 0.5 * (0.5 + 0.5 * fbm(x, y, 60, 3, 22)))[..., None]
+    h = 7.0 * prof ** 0.6 + 1.0 * slope * stone + 0.7 * fbm(x, y, 48, 4, 15) * stone
+    sand = 0.5 + 0.5 * fbm(x, y, 40, 3, 22)
+    h += (1 - stone) * (1.2 * sand) + 0.3 * fbm(x, y, 128, 2, 16)
+    base = palette(ID, 17, [lin(0x6e6a64), lin(0x5a5856), lin(0x7a7064), lin(0x4c4844), lin(0x66605a), lin(0x837b70),
+                            lin(0x5d5048)], [3, 3, 2, 2, 2, 1, 1])
+    alb = base * (0.8 + 0.4 * per_id(ID, 18))[..., None]
+    mott = fbm(x + per_id(ID, 24), y, 20, 4, 25)
+    alb *= (1 + 0.22 * mott)[..., None]
+    speck = perlin(x, y, 170, 170, 19) + 0.5 * perlin(x, y, 340, 340, 20)
+    alb *= (1 + 0.16 * speck)[..., None]
+    alb = mixc(alb, alb * 1.45, sstep(0.85, 1.3, speck) * 0.5)
+    alb = mixc(alb, alb * np.array([0.8, 0.82, 0.86]), sstep(0.7, 1.2, -speck) * 0.6)
+    blotch = 0.5 + 0.5 * fbm(x, y, 3, 4, 21)
+    alb *= (0.78 + 0.3 * blotch)[..., None]
+    alb *= (0.55 + 0.45 * prof ** 0.7)[..., None]
+    joint = mixc(lin(0x2b241d), lin(0x6a5e4c), sstep(0.3, 0.8, sand)) * (0.8 + 0.3 * (0.5 + 0.5 * fbm(x, y, 90, 2, 26)))[..., None]
     alb = mixc(joint, alb, stone)
-    # polished crowns (worn by feet): smoother + a touch lighter
-    crown = dome * stone
-    alb *= (1 + 0.08 * crown)[..., None]
-    rough = 0.62 + 0.12 * fbm(x, y, 32, 2, 23) - 0.16 * crown
-    rough = rough * stone + 0.95 * (1 - stone)
+    crown = sstep(0.03, 0.07, e) * stone
+    alb *= (1 + 0.06 * crown)[..., None]
+    rough = 0.66 + 0.12 * fbm(x, y, 32, 2, 23) - 0.18 * crown
+    rough = rough * stone + 0.97 * (1 - stone)
     return alb, h, rough
 
 
@@ -266,33 +270,41 @@ def tex_flagstone(n):
 
 
 def tex_brick(n):
-    """Old fired clay brick, stretcher bond, recessed lime mortar with soot and efflorescence."""
+    """Old fired clay brick, stretcher bond, recessed dirty lime mortar, soot, spalling and efflorescence."""
     x, y = grid(n)
     cols, rows = 8, 24
     offs = [0.5 * (r % 2) for r in range(rows)]
     ID, fx, fy, ex, ey = blocks(x, y, cols, rows, offs)
     ey = ey * (1.8 / 1.88)  # tile is 1.88 x 1.8 m
-    chip = 0.0022 * fbm(x, y, 40, 3, 51) + 0.004 * np.maximum(fbm(x, y, 20, 3, 52) - 0.35, 0) * 3
+    s = n / 512.0
+    chip = 0.0022 * fbm(x, y, 40, 3, 51) + 0.005 * np.maximum(fbm(x, y, 20, 3, 52) - 0.3, 0) * 3
     ed = np.minimum(ex, ey) - chip
-    mortar = 0.0042
-    face = sstep(mortar, mortar + 0.0045, ed)
-    h = face * 3.2 + face * 0.55 * fbm(x, y, 96, 3, 53) - (1 - face) * 0.4 * (0.5 + 0.5 * fbm(x, y, 120, 2, 54))
-    pits = sstep(0.62, 0.8, perlin(x, y, 180, 180, 55)) * face
-    h -= pits * 0.9
-    base = palette(ID, 56, [lin(0x8e4a33), lin(0x9d5a3c), lin(0x7a3b2a), lin(0xa86a48), lin(0x5e2f24), lin(0x8a5a45),
-                            lin(0x6b3a2c)], [4, 3, 3, 2, 1, 1, 2])
+    mortar = 0.0040
+    face = sstep(mortar, mortar + 0.0035, ed)
+    prof = sstep(mortar, mortar + 0.012, ed)
+    spall = sstep(0.45, 0.6, fbm(x, y, 10, 4, 63)) * face
+    h = prof ** 0.7 * 3.4 + face * 0.6 * fbm(x, y, 96, 3, 53) - spall * 1.4
+    h -= (1 - face) * 0.5 * (0.5 + 0.5 * fbm(x, y, 120, 2, 54))
+    pits = sstep(0.6, 0.85, perlin(x, y, 200, 200, 55)) * face
+    h -= pits * 1.0
+    base = palette(ID, 56, [lin(0x7e4a38), lin(0x8a5a44), lin(0x6c3c2e), lin(0x93664c), lin(0x50302a), lin(0x7a5a4a),
+                            lin(0x62392e), lin(0x8c6a58)], [4, 3, 3, 2, 1, 1, 2, 1])
     alb = base * (0.8 + 0.4 * per_id(ID, 57))[..., None]
-    # firing variation across each brick (darker headers/ends), sandy surface
-    alb *= (0.9 + 0.1 * np.sin(np.pi * fx) ** 0.5)[..., None]
-    alb *= (1 + 0.16 * fbm(x, y, 64, 3, 58))[..., None]
-    alb *= (1 - 0.35 * pits)[..., None]
-    soot = sstep(0.0, 0.8, fbm(x, y, 3, 4, 59))
-    alb *= (1 - 0.3 * soot)[..., None]
-    eff = sstep(0.55, 0.8, fbm(x, y, 2, 4, 60, aniso=(10, 3))) * sstep(0.5, 0.0, fy)
-    alb = mixc(alb, lin(0xc9c2b5), eff * 0.35 * face)
-    mort = lin(0xa39a8a) * (0.75 + 0.35 * (0.5 + 0.5 * fbm(x, y, 70, 3, 61)))[..., None] * (1 - 0.35 * soot)[..., None]
-    alb = mixc(mort * 0.8, alb, face)
-    rough = (0.82 + 0.08 * fbm(x, y, 48, 2, 62)) * face + 0.96 * (1 - face)
+    mott = fbm(x + per_id(ID, 64), y, 16, 4, 65)
+    alb *= (1 + 0.34 * mott)[..., None]
+    burnt = sstep(0.2, 0.6, fbm(x, y, 12, 3, 66)) * 0.5
+    alb = mixc(alb, alb * np.array([0.55, 0.5, 0.52]), burnt * sstep(0.3, 0.0, np.minimum(fx, 1 - fx)))
+    alb *= (1 + 0.18 * fbm(x, y, 80, 3, 58))[..., None]
+    alb *= (1 - 0.4 * pits)[..., None]
+    alb = mixc(alb, alb * np.array([1.15, 1.05, 0.95]), spall * 0.6)
+    soot = sstep(-0.2, 0.8, fbm(x, y, 2, 5, 59))
+    alb *= (1 - 0.32 * soot)[..., None]
+    eff = sstep(0.5, 0.8, fbm(x, y, 2, 4, 60, aniso=(10, 3))) * sstep(0.6, 0.0, fy)
+    alb = mixc(alb, lin(0xb9b2a6), eff * 0.3 * face)
+    alb *= (0.72 + 0.28 * prof)[..., None]
+    mort = lin(0x8e877a) * (0.7 + 0.4 * (0.5 + 0.5 * fbm(x, y, 70, 3, 61)))[..., None] * (1 - 0.4 * soot)[..., None]
+    alb = mixc(mort * 0.55, alb, face)
+    rough = (0.84 + 0.08 * fbm(x, y, 48, 2, 62)) * face + 0.96 * (1 - face)
     return alb, h, rough
 
 
@@ -303,7 +315,7 @@ def tex_plaster(n):
     wy = y + 0.03 * fbm(x, y, 3, 3, 72)
     F1, F2, ID, _, _ = voronoi(wx, wy, 5, 5, 73, jitter=0.9)
     crack = (1 - sstep(0.0, 0.0028, F2 - F1)) * sstep(0.1, 0.4, fbm(x, y, 4, 3, 74))
-    spall = sstep(0.42, 0.47, fbm(x, y, 3, 5, 75))
+    spall = sstep(0.5, 0.54, fbm(x, y, 3, 5, 75))
     h = 1.6 * fbm(x, y, 96, 3, 76) + 0.8 * fbm(x, y, 20, 3, 77) - crack * 1.6 - spall * 2.6
     alb = lin(0xcdbd9f) * np.ones((n, n, 1))
     alb *= (0.86 + 0.28 * (0.5 + 0.5 * fbm(x, y, 4, 5, 78)))[..., None]
@@ -312,13 +324,13 @@ def tex_plaster(n):
     alb = mixc(alb, alb * np.array([0.72, 0.72, 0.68]), stain * 0.7)
     # tide-line stain rings
     tl = fbm(x, y, 3, 4, 81)
-    ring = (1 - sstep(0.0, 0.03, np.abs(tl - 0.25))) * 0.35
+    ring = (1 - sstep(0.0, 0.02, np.abs(tl - 0.3))) * 0.18
     alb *= (1 - ring)[..., None]
     # spalled areas: rough render undercoat with some brick showing
     bID, bfx, bfy, bex, bey = blocks(x, y, 12, 36, [0.5 * (r % 2) for r in range(36)])
     brick = palette(bID, 82, [lin(0x8a4a33), lin(0x9b5b3e), lin(0x6d3828)]) * (0.8 + 0.4 * per_id(bID, 83))[..., None]
     bm = sstep(0.0018, 0.0035, np.minimum(bex, bey))
-    under = mixc(lin(0x8d8476), brick, bm * sstep(0.5, 0.56, fbm(x, y, 3, 5, 75)))
+    under = mixc(lin(0x8d8476), brick, bm * sstep(0.56, 0.62, fbm(x, y, 3, 5, 75)))
     alb = mixc(alb, under * 0.85, spall)
     alb *= (1 - 0.6 * crack)[..., None]
     rough = 0.9 + 0.06 * fbm(x, y, 30, 2, 84)
@@ -461,7 +473,7 @@ def tex_rust(n):
     rust = mixc(rust, lin(0x8a4a1e), sstep(-0.2, 0.6, r1) * 0.7)
     rust = mixc(rust, lin(0x2c170c), sstep(0.1, 0.7, -r2) * 0.6)
     rust *= (1 + 0.25 * perlin(x, y, 200, 200, 143))[..., None]
-    paintm = sstep(0.08, 0.14, fbm(x, y, 4, 5, 144))
+    paintm = sstep(0.22, 0.27, fbm(x, y, 4, 5, 144) + 0.1 * fbm(x, y, 30, 3, 149))
     paint = lin(0x3c4a46) * (0.85 + 0.3 * (0.5 + 0.5 * fbm(x, y, 8, 3, 145)))[..., None]
     alb = mixc(rust, paint, paintm)
     run = sstep(0.2, 0.8, fbm(x, y, 1, 4, 146, aniso=(22, 2)))
@@ -578,14 +590,14 @@ def tex_wallpaper(n):
     motif = np.maximum(motif, dots)
     stripe = 0.5 + 0.5 * np.cos(2 * np.pi * x * 48)
     base = lin(0x6f8a7a) * np.ones((n, n, 1))
-    alb = mixc(base, base * np.array([1.22, 1.18, 1.05]), motif * 0.55)
+    alb = mixc(base, base * np.array([1.35, 1.3, 1.12]), motif * 0.7)
     alb *= (1 + 0.04 * stripe)[..., None]
     alb *= (1 + 0.05 * fbm(x, y, 64, 2, 181))[..., None]
     fade = sstep(-0.2, 0.6, fbm(x, y, 2, 5, 182))
     alb = mixc(alb, alb * np.array([1.12, 1.08, 0.88]), fade * 0.45)
     st = fbm(x, y, 3, 5, 183)
-    stain = sstep(0.18, 0.3, st)
-    ring = sstep(0.04, 0.0, np.abs(st - 0.18))
+    stain = sstep(0.32, 0.42, st)
+    ring = sstep(0.03, 0.0, np.abs(st - 0.32))
     alb = mixc(alb, alb * np.array([0.85, 0.75, 0.55]), stain * 0.45)
     alb *= (1 - 0.35 * ring)[..., None]
     seam = np.minimum(np.minimum(np.abs(x), np.abs(x - 1)), np.abs(x - 0.5))
@@ -801,17 +813,20 @@ def bake_skies():
 
     # ---- PAST: physical dusk sky, sun low over the roofs, thin warm cloud streaks ----
     try:
-        img, col = render_physical_sky(6.0, air=1.2, dust=3.0, ozone=1.0)
+        img, col = render_physical_sky(2.5, air=1.4, dust=5.0, ozone=1.5)
         past = place_sun(img, col, SUN["past"])
     except Exception as e:  # pragma: no cover - fallback when Cycles is unavailable
         print("physical sky render failed, using analytic fallback:", e)
         past = np.zeros((SKY_H, SKY_W, 3)) + lin(0xc39a7c)
     past = past / max(1e-6, np.percentile(past[~below], 60)) * 0.9
+    # golden-hour grade: warm the low sky, keep a dusky lavender zenith
+    warm = np.array([1.0, 0.78, 0.55]) / 0.8
+    past = past * mixc(warm * np.ones_like(past), np.array([0.85, 0.82, 1.0]) * np.ones_like(past), sstep(0.05, 0.7, dy))
     sd = np.array(SUN["past"], float)
     sd /= np.linalg.norm(sd)
     cosS = dx * sd[0] + dy * sd[1] + dz * sd[2]
     cl = clouds_on_plane(d, 4, 5, 501)
-    cov = sstep(0.05, 0.45, cl) * sstep(0.0, 0.12, dy) * 0.55
+    cov = sstep(0.0, 0.4, cl) * sstep(0.0, 0.12, dy) * 0.75
     cloud_col = lin(0x8a6a74) * 1.2 + lin(0xffb070)[None, None, :] * (np.clip(cosS, 0, 1) ** 4 * 3.0)[..., None]
     past = mixc(past, cloud_col, cov)
     ground = lin(0x3a2814) * 0.35 + lin(0xc89a66) * 0.25 * np.exp(dy * 6)[..., None]

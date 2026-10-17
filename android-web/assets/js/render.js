@@ -1,5 +1,5 @@
 /* AFTERZERO — rendering: renderer, post, per-state looks, materials, hologram shader, mesh helpers.
-   Graphics layer (all procedural, no texture assets):
+   Graphics layer (baked tileable PBR sets + HDR skies from tools/textures/bake_textures.py, everything else procedural):
    - world-space surface detail on the environment materials (blocks/brick/planks/plaster/tiles/metal, wetness + puddles)
    - sky dome (3 blended time-state skies, sun/moon glow, clouds, stars) whose horizon equals the fog colour
    - PMREM image-based lighting generated per time state from a small procedural "city" scene
@@ -44,6 +44,99 @@
   })();
   const NOISE_U = { value: NOISE };
   R.noiseTexture = NOISE;
+
+  // ---------------- baked PBR texture sets + HDR skies (tools/textures/bake_textures.py) ----------------
+  // Every file the renderer loads is listed here (R.TEXTURE_FILES) so packagers can embed them
+  // (window.AZ_TEXTURES[file] = data URL or bare base64). Sets: <name>_a.jpg albedo (sRGB, AO baked in),
+  // <name>_n.jpg RG = tangent normal XY, B = roughness. tile = world metres per texture repeat (u, v);
+  // mean = mean linear albedo, rough = mean roughness: the level's material colour stays authoritative and the
+  // texture adds relative detail (colour * tex / mean). All maps are seamless, mapped in world space.
+  R.TEXTURE_DIR = "textures/";
+  R.TEXTURES = {
+    cobble: { tile: [2.0, 2.0], mean: [0.1063, 0.0963, 0.0848], rough: 0.7099 },
+    flagstone: { tile: [2.4, 2.4], mean: [0.3944, 0.3307, 0.2267], rough: 0.8111 },
+    brick: { tile: [1.88, 1.8], mean: [0.1414, 0.0748, 0.0522], rough: 0.8889 },
+    plaster: { tile: [3.0, 3.0], mean: [0.5884, 0.4905, 0.334], rough: 0.9032 },
+    concrete: { tile: [2.4, 2.4], mean: [0.2257, 0.2147, 0.1937], rough: 0.8783 },
+    planks: { tile: [2.4, 2.4], mean: [0.1563, 0.0663, 0.025], rough: 0.689 },
+    timber: { tile: [2.0, 2.0], mean: [0.0365, 0.0173, 0.0077], rough: 0.7516 },
+    metal: { tile: [1.5, 1.5], mean: [0.2446, 0.2446, 0.237], rough: 0.4999 },
+    rust: { tile: [2.0, 2.0], mean: [0.096, 0.0453, 0.0269], rough: 0.8485 },
+    roof: { tile: [2.4, 2.4], mean: [0.0501, 0.0536, 0.0621], rough: 0.7251 },
+    dirt: { tile: [3.0, 3.0], mean: [0.0988, 0.0781, 0.0546], rough: 0.8668 },
+    tiles: { tile: [2.4, 2.4], mean: [0.4301, 0.5167, 0.5268], rough: 0.2408 },
+    wallpaper: { tile: [1.2, 1.2], mean: [0.169, 0.2673, 0.1959], rough: 0.786 },
+    fabric: { tile: [1.0, 1.0], mean: [0.2548, 0.2276, 0.1883], rough: 0.9323 },
+  };
+  R.SKY_FILES = ["sky_past.hdr", "sky_present.hdr", "sky_future.hdr"];
+  R.TEXTURE_FILES = Object.keys(R.TEXTURES).reduce((a, k) => a.concat([k + "_a.jpg", k + "_n.jpg"]), []).concat(R.SKY_FILES);
+  const embedded = f => { const e = window.AZ_TEXTURES && window.AZ_TEXTURES[f]; return e ? (/^data:/.test(e) ? e : "data:application/octet-stream;base64," + e) : null; };
+  const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat); WHITE.needsUpdate = true;
+  const FLAT = new THREE.DataTexture(new Uint8Array([128, 128, 200, 255]), 1, 1, THREE.RGBAFormat); FLAT.needsUpdate = true;
+  const TEXSETS = {}; // name -> { alb, nrm, ready: {value}, users: [] }
+  const loadedTex = [];
+  let texAniso = 1;
+  function texSet(name) {
+    if (TEXSETS[name]) return TEXSETS[name];
+    const s = (TEXSETS[name] = { alb: { value: WHITE }, nrm: { value: FLAT }, ready: 0, started: false, onReady: [] });
+    return s;
+  }
+  function startSet(name) {
+    const s = texSet(name);
+    if (s.started) return;
+    s.started = true;
+    const loader = new THREE.TextureLoader();
+    let n = 0;
+    const done = () => { if (++n === 2) { s.ready = 1; s.onReady.forEach(f => f()); } };
+    [["alb", "_a.jpg"], ["nrm", "_n.jpg"]].forEach(([k, suf]) => {
+      const f = name + suf;
+      loader.load(embedded(f) || R.TEXTURE_DIR + f, t => {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+        t.generateMipmaps = true; t.anisotropy = texAniso; t.needsUpdate = true;
+        s[k].value = t; loadedTex.push(t); done();
+      }, undefined, () => { /* missing file: the set simply stays untextured */ });
+    });
+  }
+  // Radiance .hdr (flat or new-style RLE scanlines) -> RGBE bytes, rows bottom-up for a flipY=false DataTexture.
+  function parseHDR(buf) {
+    const b = new Uint8Array(buf); let p = 0, w = 0, h = 0;
+    while (p < b.length && !w) {
+      let s = ""; while (p < b.length && b[p] !== 10) s += String.fromCharCode(b[p++]); p++;
+      const m = /^-Y (\d+) \+X (\d+)/.exec(s); if (m) { h = +m[1]; w = +m[2]; }
+    }
+    if (!w) return null;
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h && p < b.length; y++) {
+      const row = (h - 1 - y) * w * 4;
+      if (w >= 8 && w < 32768 && b[p] === 2 && b[p + 1] === 2 && !(b[p + 2] & 0x80)) {
+        p += 4;
+        for (let c = 0; c < 4; c++) {
+          let x = 0;
+          while (x < w && p < b.length) {
+            let n = b[p++];
+            if (n > 128) { n -= 128; const v = b[p++]; while (n-- > 0 && x < w) out[row + (x++) * 4 + c] = v; }
+            else while (n-- > 0 && x < w) out[row + (x++) * 4 + c] = b[p++];
+          }
+        }
+      } else { out.set(b.subarray(p, p + w * 4), row); p += w * 4; }
+    }
+    return { w, h, data: out };
+  }
+  const SKYTEX = [null, null, null];
+  let skyStarted = false;
+  function loadSkies() {
+    if (skyStarted) return;
+    skyStarted = true;
+    const fl = new THREE.FileLoader(); fl.setResponseType("arraybuffer");
+    R.SKY_FILES.forEach((f, i) => fl.load(embedded(f) || R.TEXTURE_DIR + f, buf => {
+      try {
+        const r = parseHDR(buf); if (!r) return;
+        const t = new THREE.DataTexture(r.data, r.w, r.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+        t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.wrapS = THREE.RepeatWrapping; t.needsUpdate = true;
+        SKYTEX[i] = t; envSig = ""; // regenerate the IBL with the baked sky
+      } catch (e) { /* keep the procedural environment */ }
+    }, undefined, () => {}));
+  }
 
   // ---------------- fog: radial exp2 + height falloff + sun in-scattering ----------------
   // Shared Float32Arrays are referenced (not copied) by UniformsUtils.clone, so every material sees live values.
@@ -214,6 +307,8 @@
     pmrem = new THREE.PMREMGenerator(renderer);
     R.scene = scene; R.camera = camera; R.renderer = renderer;
     R.applyQuality();
+    Object.keys(R.TEXTURES).forEach(startSet);
+    loadSkies();
     AZ.on("settings", AZ.persistent(() => R.applyQuality()));
   };
 
@@ -277,9 +372,9 @@
   const SHADOW_R = 18; // half-size of the shadow box around the player (m)
   R.scale = 1;
   const PRESETS = [
-    { scale: 0.6, bloom: false, shadows: false, fps: 30, detail: false, ibl: false, fxaa: false, shadowSize: 0, shadowEvery: 0 },
-    { scale: 0.8, bloom: true, shadows: true, fps: 60, detail: true, ibl: true, fxaa: true, shadowSize: 1024, shadowEvery: 2 },
-    { scale: 1, bloom: true, shadows: true, fps: 60, detail: true, ibl: true, fxaa: true, shadowSize: 2048, shadowEvery: 1 },
+    { scale: 0.6, bloom: false, shadows: false, fps: 30, detail: false, ibl: false, fxaa: false, shadowSize: 0, shadowEvery: 0, aniso: 1 },
+    { scale: 0.8, bloom: true, shadows: true, fps: 60, detail: true, ibl: true, fxaa: true, shadowSize: 1024, shadowEvery: 2, aniso: 4 },
+    { scale: 1, bloom: true, shadows: true, fps: 60, detail: true, ibl: true, fxaa: true, shadowSize: 2048, shadowEvery: 1, aniso: 8 },
   ];
   R.preset = () => {
     const q = AZ.settings.quality < 0 ? (R.autoTier !== undefined ? R.autoTier : 1) : AZ.settings.quality;
@@ -302,6 +397,8 @@
     }
     sun.shadow.normalBias = p.shadowSize >= 2048 ? 0.02 : 0.03;
     DET.glob.value.x = p.detail ? 1 : 0;
+    const an = Math.max(1, Math.min(p.aniso || 1, renderer.capabilities.getMaxAnisotropy()));
+    if (an !== texAniso) { texAniso = an; loadedTex.forEach(t => { t.anisotropy = an; t.needsUpdate = true; }); }
     if (p.fxaa) grade.material.defines.FXAA = 1; else delete grade.material.defines.FXAA;
     if (!p.ibl) scene.environment = null;
     if (applied !== null && applied !== sig) {
@@ -397,12 +494,44 @@
     const sc = mixC("sun", wts); fb[0] = sc.r; fb[1] = sc.g; fb[2] = sc.b;
     return L;
   }
+  // Baked physical sky (RGBE equirect, nearest-sampled + decoded here) tinted by how far the level's look has moved
+  // away from the default look, so per-level colour overrides still steer the image-based lighting.
+  const ENV_HDR_I = [0.5, 1.6, 0.4], ENV_HDR_MAX = [40, 6, 12];
+  let envHdr = null;
+  function hdrMaterial() {
+    return new THREE.ShaderMaterial({
+      uniforms: { tEnv: { value: null }, uTint: { value: new THREE.Color(1, 1, 1) }, uGround: { value: new THREE.Color() }, uI: { value: 1 }, uMax: { value: 40 } },
+      vertexShader: SKY_VERT,
+      fragmentShader: `uniform sampler2D tEnv; uniform vec3 uTint; uniform vec3 uGround; uniform float uI; uniform float uMax; varying vec3 vDir;
+        void main(){
+          vec3 d = normalize( vDir );
+          vec2 uv = vec2( atan( d.z, d.x ) * 0.15915494 + 0.5, asin( clamp( d.y, -1.0, 1.0 ) ) * 0.31830989 + 0.5 );
+          vec4 t = texture2D( tEnv, uv );
+          vec3 c = min( t.rgb * exp2( t.a * 255.0 - 128.0 ) * uI, vec3( uMax ) ) * uTint;
+          c = mix( c, uGround, smoothstep( 0.0, -0.2, d.y ) * 0.6 );
+          gl_FragColor = linearToOutputTexel( vec4( c, 1.0 ) );
+        }`,
+      side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+    });
+  }
+  const _ta = new THREE.Color(), _tb = new THREE.Color();
   function genEnv(i) {
     if (!envScene) buildEnvScene();
     const u = envSky.material.uniforms;
     const L = setSkyUniforms(u, i, null, 0, u.azFogA.value, u.azFogB.value);
     u.uGround.value.setHex(val(L, i, "hemiG")).lerp(u.uHor.value, 0.35);
     u.uMisc.value.w = 1.2; u.uMisc.value.y *= 0.5;
+    if (SKYTEX[i]) {
+      if (!envHdr) { envHdr = new THREE.Mesh(envSky.geometry, hdrMaterial()); envHdr.renderOrder = -1; envHdr.frustumCulled = false; envScene.add(envHdr); }
+      const hu = envHdr.material.uniforms;
+      hu.tEnv.value = SKYTEX[i]; hu.uI.value = ENV_HDR_I[i]; hu.uMax.value = ENV_HDR_MAX[i];
+      // tint = current look colours / default look colours (sky + horizon), linear, clamped
+      _ta.setHex(val(L, i, "fog")).lerp(_tb.setHex(val(L, i, "sky")), 0.5).convertSRGBToLinear();
+      _tb.setHex(DEF[i].fog).lerp(T.setHex(DEF[i].sky), 0.5).convertSRGBToLinear();
+      hu.uTint.value.setRGB(...["r", "g", "b"].map(k => Math.min(3, Math.max(0.33, _ta[k] / Math.max(1e-3, _tb[k])))));
+      hu.uGround.value.copy(u.uGround.value).convertSRGBToLinear().multiplyScalar(0.6);
+      envHdr.visible = true; envSky.visible = false;
+    } else if (envHdr) { envHdr.visible = false; envSky.visible = true; }
     const pal = ENV_PAL[i], lit = ENV_LIT[i];
     envLights.forEach(m => { m.visible = m.userData.k < lit[0]; m.material.color.setHex(pal[m.userData.c % pal.length]).convertSRGBToLinear().multiplyScalar(lit[1] * (0.5 + m.userData.k)); });
     return pmrem.fromScene(envScene, 0.02, 0.1, 100);
@@ -510,7 +639,7 @@
     rust: M(0x5b3420, 0.8, 0.4), copper: M(0x4d8a78, 0.5, 0.7), rail: M(0x9a9ca0, 0.25, 1), concrete: M(0x5a5752, 0.88), tile: M(0x9fb1b4, 0.22),
     red: M(0xb2302a, 0.9), gold: M(0xd9a034, 0.9), teal: M(0x1f7a7a, 0.9), navy: M(0x1e2a48, 0.8), ochre: M(0xa6742a, 0.8), olive: M(0x4e5a2e, 0.8),
     burgundy: M(0x64202a, 0.8), grey: M(0x666670, 0.8), white: M(0xd8d8d0, 0.8), skin: M(0xc99a78, 0.5), skinDark: M(0x6e4a34, 0.5),
-    paper: M(0xe8dfc8, 0.9), cup: M(0x1b52d8, 0.15), obsidian: M(0x0b0b10, 0.2, 0.5), ruin: M(0x1d1b22, 0.9), wallpaper: M(0x6f8a7a, 0.9),
+    paper: M(0xe8dfc8, 0.9), roof: M(0x3e4048, 0.75), cup: M(0x1b52d8, 0.15), obsidian: M(0x0b0b10, 0.2, 0.5), ruin: M(0x1d1b22, 0.9), wallpaper: M(0x6f8a7a, 0.9),
     crystal: new THREE.MeshStandardMaterial({ color: 0x6a46d8, roughness: 0.05, metalness: 0.2, emissive: 0x3a1a9a, emissiveIntensity: 0.7 }),
     window: new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xffa858, emissiveIntensity: 1.2 }),
     windowCold: new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x6aa6e8, emissiveIntensity: 0.5 }),
@@ -523,7 +652,11 @@
   MAT.windowDark.userData.envMul = 1.6; MAT.puddle.userData.envMul = 1.5; MAT.stoneWet.userData.envMul = 1.3;
   const ENV_MATS = Object.keys(MAT).map(k => MAT[k]).filter(m => m.isMeshStandardMaterial);
 
-  // ---- procedural world-space surface detail (injected into MeshStandardMaterial; one shared program) ----
+  // ---- world-space surface detail (injected into MeshStandardMaterial; one shared program) ----
+  // Baked PBR sets (R.TEXTURES) are projected in world space on the dominant axis of the surface normal (merged
+  // static geometry keeps no UVs): albedo x material colour / set mean, tangent normal map, roughness map.
+  // Low: albedo only (one fetch). Medium/High: + normal/roughness, macro variation against visible tiling,
+  // run-off stains, rust, rain wetness + puddles that collect in the joints, lit tower windows.
   const DET = { glob: { value: new THREE.Vector4(1, 0, 0, 0) }, win: { value: new THREE.Vector4(1, 0.7, 0.4, 0.3) } };
   const DET_VERT = `
     vec4 azWP = vec4( transformed, 1.0 ); vec3 azON = objectNormal;
@@ -531,59 +664,48 @@
       azWP = instanceMatrix * azWP; azON = mat3( instanceMatrix ) * azON;
     #endif
     azWP = modelMatrix * azWP; vAzPos = azWP.xyz; vAzN = mat3( modelMatrix ) * azON;`;
-  const DET_PARS = `uniform sampler2D azNoise; uniform vec4 azGlobal; uniform vec4 azWin; uniform vec4 azMat; uniform vec4 azMat2; uniform vec4 azMat3;
+  const DET_PARS = `uniform sampler2D azNoise; uniform sampler2D azAlb; uniform sampler2D azNrm; uniform vec4 azGlobal; uniform vec4 azWin;
+    uniform vec4 azMat; uniform vec4 azMat2; uniform vec4 azMat3; uniform vec4 azTex; uniform vec4 azTexS; uniform vec3 azTexM;
     varying vec3 vAzPos; varying vec3 vAzN;
     ${HASH}
-    vec4 azBlocks( vec2 p, vec2 s, float gw, float aa, float off ) {
-      vec2 q = p / s; float row = floor( q.y ); q.x += off * ( mod( row, 2.0 ) + azHash( vec2( row, 7.3 ) ) * 0.6 );
-      vec2 c = floor( q ); vec2 f = fract( q ); vec2 e = min( f, 1.0 - f ) * s; float ed = min( e.x, e.y );
-      return vec4( smoothstep( gw * 0.5, gw * 3.0, ed ), 1.0 - smoothstep( gw - aa, gw + aa, ed ), azHash( c ), 1.0 );
-    }
-    // x height 0..1, y grout mask, z per-cell random, w has-grid
-    vec4 azPattern( vec2 p, float vert, float aa ) {
-      float f = azMat.x;
-      if ( f < 1.5 ) return azBlocks( p, vert > 0.5 ? vec2( 0.62, 0.34 ) : vec2( 0.6, 0.4 ), 0.013, aa, 0.5 );
-      if ( f < 2.5 ) return azBlocks( p, vec2( 0.235, 0.075 ), 0.007, aa, 0.5 );
-      if ( f < 3.5 ) { vec4 b = azBlocks( p, vec2( 1.85, 0.16 ), 0.0025, aa, 0.37 ); b.x = 0.4 + 0.6 * b.x; return b; }
-      if ( f > 4.5 && f < 5.5 ) { vec4 b = azBlocks( p, vert > 0.5 ? vec2( 1.2, 0.6 ) : vec2( 2.4, 2.4 ), 0.003, aa, 0.0 ); b.x = 0.7 + 0.3 * b.x; b.y *= 0.6; return b; }
-      if ( f > 5.5 && f < 6.5 ) return azBlocks( p, vec2( 0.3, 0.3 ), 0.003, aa, 0.0 );
-      return vec4( 1.0, 0.0, 0.5, 0.0 );
-    }
-    float azHeight( vec2 p, float vert, float aa ) { return azPattern( p, vert, aa ).x * azMat.z + texture2D( azNoise, p * azMat2.x ).b * azMat.w; }
 `;
   const DET_MAIN = `
     vec3 azNW = normalize( vAzN ); vec3 azAb = abs( azNW );
     vec2 azP = vAzPos.xz; vec3 azT = vec3( 1.0, 0.0, 0.0 ); vec3 azB = vec3( 0.0, 0.0, 1.0 ); float azVert = 0.0;
     if ( azAb.y < max( azAb.x, azAb.z ) ) { azVert = 1.0; azB = vec3( 0.0, 1.0, 0.0 ); if ( azAb.x > azAb.z ) { azP = vAzPos.zy; azT = vec3( 0.0, 0.0, 1.0 ); } else { azP = vAzPos.xy; } }
-    float azAA = 0.001, azNS = 0.0, azRough = 1.0, azRoughAdd = 0.0, azPud = 0.0, azRust = 0.0, azWet = 0.0;
+    float azAA = 0.001, azNS = 0.0, azRough = 1.0, azRoughAdd = 0.0, azPud = 0.0, azRust = 0.0, azWet = 0.0, azCrev = 0.0;
     vec3 azEmis = vec3( 0.0 );
+    vec2 azUV = azP * azTexS.xy;
+    vec4 azNT = vec4( 0.5, 0.5, 1.0, 1.0 );
+    if ( azTex.x > 0.5 ) {
+      vec3 azTA = texture2D( azAlb, azUV ).rgb;
+      azTA = azTA * ( azTA * ( azTA * 0.305306011 + 0.682171111 ) + 0.012522878 );
+      diffuseColor.rgb *= mix( vec3( 1.0 ), azTA * azTexM, azTex.y );
+    }
     if ( azGlobal.x > 0.5 ) {
       azAA = max( length( fwidth( azP ) ) * 0.7, 1e-4 );
+      float azFade = 1.0 - smoothstep( 0.02, 0.09, azAA );
       float fam = azMat.x;
-      vec4 pat = azPattern( azP, azVert, azAA );
-      float fade = 1.0 - smoothstep( 0.03, 0.12, azAA );
+      if ( azTex.x > 0.5 ) {
+        azNT = texture2D( azNrm, azUV );
+        float azR = azNT.b * azTexS.z;
+        azRough = mix( 1.0, azR, azTex.w );
+        azCrev = clamp( ( azR - 1.0 ) * 3.0, 0.0, 1.0 );
+      }
       vec4 n1 = texture2D( azNoise, azP * azMat2.x * 0.31 );
       vec4 n2 = texture2D( azNoise, azP * 0.045 + vec2( 0.37, 0.71 ) );
-      vec3 alb = vec3( 1.0 + ( pat.z - 0.5 ) * azMat2.y * fade ) * mix( vec3( 1.0 ), vec3( 1.06, 0.98, 0.9 ), azHash( vec2( pat.z * 91.0, 3.0 ) ) * azMat2.y * fade );
-      alb *= mix( 0.78, 1.0, mix( 1.0, pat.x, pat.w * fade ) );
-      alb *= ( 1.0 + ( n1.g - 0.5 ) * ( fam > 8.5 && fam < 9.5 ? 0.18 : 0.52 ) ) * mix( 1.0, 0.86 + 0.28 * texture2D( azNoise, azP * 2.3 ).a, fade );
+      vec3 alb = vec3( 1.0 + ( n1.g - 0.5 ) * ( fam > 8.5 && fam < 9.5 ? 0.18 : 0.4 ) ) * mix( vec3( 1.0 ), vec3( 1.06, 0.97, 0.88 ), n2.b * azMat2.y );
       alb *= 1.0 - azMat2.z * smoothstep( 0.42, 0.85, n2.r );
       if ( azVert > 0.5 ) { float st = texture2D( azNoise, vec2( azP.x * 0.6, azP.y * 0.04 ) + 0.13 ).g; alb *= 1.0 - azMat2.z * 0.9 * smoothstep( 0.55, 0.9, st ); }
-      if ( fam > 2.5 && fam < 3.5 ) { float gr = texture2D( azNoise, vec2( azP.x * 0.05, azP.y * 2.6 + pat.z * 7.0 ) ).b; alb *= 0.7 + 0.6 * gr; }
-      else if ( fam > 1.5 && fam < 2.5 ) { alb *= mix( vec3( 1.0 ), vec3( 0.72, 0.8, 0.88 ), step( 0.88, pat.z ) ); }
-      else if ( fam > 9.5 && fam < 10.5 ) { alb *= 0.9 + 0.14 * step( 0.5, fract( azP.x / 0.18 ) ) * azVert; }
-      else if ( fam > 6.5 && fam < 7.5 ) { azRough *= 0.75 + 0.5 * texture2D( azNoise, vec2( azP.x * 0.04, azP.y * 3.0 ) ).a; }
-      float g = pat.y * fade;
       diffuseColor.rgb *= alb;
-      diffuseColor.rgb = mix( diffuseColor.rgb, azMat3.w > 0.0 ? vec3( azMat3.w ) * vec3( 1.0, 0.95, 0.86 ) : diffuseColor.rgb * 0.42, g );
       if ( azMat3.z > 0.0 ) { azRust = azMat3.z * smoothstep( 0.48, 0.72, n2.g * 0.7 + n1.r * 0.5 ); diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.16, 0.055, 0.02 ) * ( 0.7 + 0.6 * n1.b ), azRust ); }
       azRough *= 1.0 + ( n1.b - 0.5 ) * azMat3.x;
-      azRoughAdd = g * azMat3.y + azRust * 0.5;
+      azRoughAdd = azRust * 0.5;
       float horiz = smoothstep( 0.65, 0.9, azNW.y );
       azWet = max( azMat.y, azGlobal.y * azMat2.w * mix( 0.3, 1.0, horiz ) );
-      azPud = azMat.y > 0.95 ? horiz : azWet * horiz * smoothstep( 0.56, 0.63, n2.g * 0.8 + n1.r * 0.25 + ( 1.0 - pat.x ) * 0.2 );
-      diffuseColor.rgb *= mix( 1.0, 0.72, azWet ) * ( 1.0 - azPud * 0.3 );
-      azNS = 1.0 - azPud * 0.9;
+      azPud = azMat.y > 0.95 ? horiz : azWet * horiz * smoothstep( 0.56, 0.63, n2.g * 0.8 + n1.r * 0.25 + azCrev * 0.22 );
+      diffuseColor.rgb *= mix( 1.0, 0.7 - 0.12 * azCrev, azWet ) * ( 1.0 - azPud * 0.3 );
+      azNS = ( 1.0 - azPud * 0.9 ) * mix( 0.45, 1.0, azFade );
       if ( fam > 10.5 && azVert > 0.5 ) {
         vec2 q = azP / vec2( 2.6, 3.4 ); vec2 wc = floor( q ); vec2 wf = fract( q );
         float win = step( 0.24, wf.x ) * step( wf.x, 0.76 ) * step( 0.28, wf.y ) * step( wf.y, 0.8 );
@@ -591,22 +713,22 @@
         diffuseColor.rgb *= 1.0 - win * 0.6;
         azEmis = azWin.rgb * ( win * step( 1.0 - azWin.w, hs ) * ( 0.45 + 0.9 * azHash( wc + 7.1 ) ) );
         azRough *= 1.0 - win * 0.8;
+        azNS *= 1.0 - win;
       }
     }`;
   const DET_ROUGH = `
     roughnessFactor = clamp( roughnessFactor * azRough + azRoughAdd, 0.04, 1.0 );
-    roughnessFactor = mix( roughnessFactor, max( roughnessFactor * 0.45, 0.22 ), azWet );
+    roughnessFactor = mix( roughnessFactor, max( roughnessFactor * 0.45, 0.2 ) - azCrev * 0.08, azWet );
     roughnessFactor = mix( roughnessFactor, 0.035, azPud );`;
   const DET_NORMAL = `
-    if ( azGlobal.x > 0.5 && azNS > 0.01 && azMat.z + azMat.w > 0.0 ) {
-      float azE = max( azAA, 0.004 );
-      float azH0 = azHeight( azP, azVert, azAA );
-      vec2 azG = vec2( azHeight( azP + vec2( azE, 0.0 ), azVert, azAA ) - azH0, azHeight( azP + vec2( 0.0, azE ), azVert, azAA ) - azH0 ) / azE;
-      normal = normalize( normal - azNS * ( mat3( viewMatrix ) * ( azT * azG.x + azB * azG.y ) ) );
+    if ( azGlobal.x > 0.5 && azTex.x > 0.5 && azNS > 0.01 ) {
+      vec2 azNN = ( azNT.xy * 2.0 - 1.0 ) * ( azTex.z * azNS );
+      normal = normalize( normal + mat3( viewMatrix ) * ( azT * azNN.x + azB * azNN.y ) );
     }`;
   const makeOBC = u => function (sh) {
     sh.uniforms.azNoise = NOISE_U; sh.uniforms.azGlobal = DET.glob; sh.uniforms.azWin = DET.win;
     sh.uniforms.azMat = u.azMat; sh.uniforms.azMat2 = u.azMat2; sh.uniforms.azMat3 = u.azMat3;
+    sh.uniforms.azTex = u.azTex; sh.uniforms.azTexS = u.azTexS; sh.uniforms.azTexM = u.azTexM; sh.uniforms.azAlb = u.azAlb; sh.uniforms.azNrm = u.azNrm;
     sh.vertexShader = "varying vec3 vAzPos;\nvarying vec3 vAzN;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + DET_VERT);
     sh.fragmentShader = DET_PARS + sh.fragmentShader
       .replace("#include <color_fragment>", "#include <color_fragment>\n" + DET_MAIN)
@@ -615,32 +737,51 @@
       .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + DET_NORMAL)
       .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += azEmis;");
   };
-  // [fam, wet, ampBlock, ampNoise | noiseFreq, cellVar, stain, rainOK | roughVar, groutRough, rust, mortarLum]
-  // fam: 1 stone blocks, 2 brick, 3 planks, 4 plaster, 5 concrete, 6 tile, 7 metal, 8 ground, 9 paint/fabric, 10 wallpaper, 11 tower windows
+  // [fam, wet, -, - | noiseFreq, hueVar, stain, rainOK | roughVar, -, rust, -]
+  // fam: 1 stone, 2 brick, 3 planks, 4 plaster, 5 concrete, 6 tile, 7 metal, 8 ground, 9 paint/fabric, 10 wallpaper, 11 tower windows
   const FAMS = {
-    ground: [8, 0, 0, 0.005, 0.8, 0, 0.35, 1, 0.5, 0, 0, 0],
-    stone: [1, 0, 0.006, 0.003, 0.7, 0.5, 0.25, 1, 0.4, 0.15, 0, 0],
-    stoneWet: [1, 0.8, 0.005, 0.0025, 0.7, 0.25, 0.15, 1, 0.3, 0.05, 0, 0],
-    puddle: [8, 1, 0, 0.0006, 1.2, 0, 0, 0, 0.1, 0, 0, 0],
-    plaster: [4, 0, 0, 0.004, 1.4, 0, 0.32, 1, 0.15, 0, 0, 0],
-    plasterCold: [4, 0, 0, 0.004, 1.4, 0, 0.32, 1, 0.2, 0, 0, 0],
-    brick: [2, 0, 0.004, 0.002, 1.6, 0.45, 0.22, 1, 0.25, 0.08, 0, 0.13],
-    wood: [3, 0, 0.0018, 0.0008, 0.9, 0.38, 0.12, 1, 0.35, 0.15, 0, 0],
-    woodDark: [3, 0, 0.0018, 0.0008, 0.9, 0.3, 0.12, 1, 0.35, 0.15, 0, 0],
-    concrete: [5, 0, 0.002, 0.004, 0.8, 0.1, 0.38, 1, 0.3, 0.05, 0, 0],
-    ruin: [5, 0, 0.002, 0.005, 0.8, 0.12, 0.42, 1, 0.3, 0.05, 0, 0],
-    tile: [6, 0, 0.002, 0.0005, 1.0, 0.1, 0.08, 0, 0.25, 0.55, 0, 0.32],
-    iron: [7, 0, 0, 0.001, 1.2, 0, 0.25, 1, 0.6, 0, 0.25, 0],
-    rust: [7, 0, 0, 0.002, 1.2, 0, 0.3, 1, 0.4, 0, 0.75, 0],
-    brass: [7, 0, 0, 0.0008, 1.2, 0, 0.3, 0, 0.5, 0, 0, 0],
-    copper: [7, 0, 0, 0.001, 1.2, 0, 0.35, 0, 0.5, 0, 0.15, 0],
-    rail: [7, 0, 0, 0.0006, 1.2, 0, 0.15, 1, 0.5, 0, 0, 0],
-    obsidian: [9, 0, 0, 0.0012, 1.0, 0, 0.15, 1, 0.5, 0, 0, 0],
-    wallpaper: [10, 0, 0, 0.001, 1.5, 0, 0.3, 0, 0.15, 0, 0, 0],
+    ground: [8, 0, 0, 0, 0.8, 0.3, 0.3, 1, 0.3, 0, 0, 0],
+    stone: [1, 0, 0, 0, 0.7, 0.4, 0.22, 1, 0.3, 0, 0, 0],
+    stoneWet: [1, 0.8, 0, 0, 0.7, 0.25, 0.15, 1, 0.3, 0, 0, 0],
+    puddle: [8, 1, 0, 0, 1.2, 0, 0, 0, 0.1, 0, 0, 0],
+    plaster: [4, 0, 0, 0, 1.4, 0.3, 0.3, 1, 0.1, 0, 0, 0],
+    plasterCold: [4, 0, 0, 0, 1.4, 0.2, 0.3, 1, 0.15, 0, 0, 0],
+    brick: [2, 0, 0, 0, 1.6, 0.3, 0.2, 1, 0.2, 0, 0, 0],
+    wood: [3, 0, 0, 0, 0.9, 0.3, 0.12, 1, 0.25, 0, 0, 0],
+    woodDark: [3, 0, 0, 0, 0.9, 0.2, 0.12, 1, 0.25, 0, 0, 0],
+    roof: [1, 0, 0, 0, 0.8, 0.2, 0.2, 1, 0.25, 0, 0, 0],
+    concrete: [5, 0, 0, 0, 0.8, 0.1, 0.35, 1, 0.25, 0, 0, 0],
+    ruin: [5, 0, 0, 0, 0.8, 0.12, 0.4, 1, 0.25, 0, 0, 0],
+    tile: [6, 0, 0, 0, 1.0, 0.1, 0.08, 0, 0.2, 0, 0, 0],
+    iron: [7, 0, 0, 0, 1.2, 0, 0.25, 1, 0.4, 0, 0.25, 0],
+    rust: [7, 0, 0, 0, 1.2, 0, 0.3, 1, 0.2, 0, 0.35, 0],
+    brass: [7, 0, 0, 0, 1.2, 0, 0.3, 0, 0.4, 0, 0, 0],
+    copper: [7, 0, 0, 0, 1.2, 0, 0.35, 0, 0.4, 0, 0.15, 0],
+    rail: [7, 0, 0, 0, 1.2, 0, 0.15, 1, 0.4, 0, 0, 0],
+    obsidian: [9, 0, 0, 0, 1.0, 0, 0.15, 1, 0.4, 0, 0, 0],
+    wallpaper: [10, 0, 0, 0, 1.5, 0, 0.3, 0, 0.1, 0, 0, 0],
   };
-  ["red", "gold", "teal", "navy", "ochre", "olive", "burgundy", "grey", "white", "paper"].forEach(k => { FAMS[k] = [9, 0, 0, 0.0012, 2.2, 0, 0.14, 0, 0.3, 0, 0, 0]; });
+  ["red", "gold", "teal", "navy", "ochre", "olive", "burgundy", "grey", "white", "paper"].forEach(k => { FAMS[k] = [9, 0, 0, 0, 2.2, 0, 0.14, 0, 0.2, 0, 0, 0]; });
+  // material key -> [texture set, albedo strength, normal strength, roughness strength, tile scale]
+  const MAT_TEX = {
+    ground: ["dirt", 1, 1, 1], stone: ["flagstone", 1, 1, 1], stoneWet: ["cobble", 1, 1.1, 1], plaster: ["plaster", 1, 1, 1],
+    plasterCold: ["plaster", 0.9, 1, 1], brick: ["brick", 1, 1, 1], wood: ["planks", 1, 1, 1], woodDark: ["timber", 1, 1, 1],
+    roof: ["roof", 1, 1, 1], concrete: ["concrete", 1, 1, 1], ruin: ["concrete", 1, 1.3, 1, 1.5], tile: ["tiles", 1, 0.9, 1],
+    iron: ["metal", 1, 0.8, 1], rail: ["metal", 0.6, 0.5, 1], brass: ["metal", 0.55, 0.5, 0.8], copper: ["metal", 0.8, 0.7, 1],
+    rust: ["rust", 1, 1, 1], obsidian: ["metal", 0.35, 0.5, 0.8, 2], wallpaper: ["wallpaper", 1, 1, 1],
+  };
+  ["red", "gold", "teal", "navy", "ochre", "olive", "burgundy", "grey", "white"].forEach(k => { MAT_TEX[k] = ["fabric", 0.8, 0.8, 1]; });
+  R.MAT_TEX = MAT_TEX;
   const detail = (mat, prm) => {
-    const u = { azMat: { value: new THREE.Vector4(prm[0], prm[1], prm[2], prm[3]) }, azMat2: { value: new THREE.Vector4(prm[4], prm[5], prm[6], prm[7]) }, azMat3: { value: new THREE.Vector4(prm[8], prm[9], prm[10], prm[11]) } };
+    const tx = MAT_TEX[mat.userData.azKey], info = tx && R.TEXTURES[tx[0]], set = info ? texSet(tx[0]) : null, sc = (tx && tx[4]) || 1;
+    const u = {
+      azMat: { value: new THREE.Vector4(prm[0], prm[1], prm[2], prm[3]) }, azMat2: { value: new THREE.Vector4(prm[4], prm[5], prm[6], prm[7]) }, azMat3: { value: new THREE.Vector4(prm[8], prm[9], prm[10], prm[11]) },
+      azTex: { value: new THREE.Vector4(0, set ? tx[1] : 0, set ? tx[2] : 0, set ? tx[3] : 0) },
+      azTexS: { value: new THREE.Vector4(set ? 1 / (info.tile[0] * sc) : 1, set ? 1 / (info.tile[1] * sc) : 1, set ? 1 / info.rough : 1, 0) },
+      azTexM: { value: new THREE.Vector3().fromArray(set ? info.mean.map(v => 1 / v) : [1, 1, 1]) },
+      azAlb: set ? set.alb : { value: WHITE }, azNrm: set ? set.nrm : { value: FLAT },
+    };
+    if (set) { const on = () => { u.azTex.value.x = 1; }; if (set.ready) on(); else set.onReady.push(on); }
     mat.azU = u;
     mat.extensions = { derivatives: true };
     mat.onBeforeCompile = makeOBC(u);
