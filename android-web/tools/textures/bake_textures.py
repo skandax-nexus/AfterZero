@@ -638,9 +638,9 @@ def tex_fabric(n):
 # name: (fn, size px, normal strength, ao strength, world tile size m [u, v], families -> documented in render.js)
 SETS = {
     "cobble": (tex_cobble, 1024, 1.0, 0.75, [2.0, 2.0]),
-    "flagstone": (tex_flagstone, 512, 1.0, 0.6, [2.4, 2.4]),
+    "flagstone": (tex_flagstone, 1024, 1.0, 0.6, [2.4, 2.4]),
     "brick": (tex_brick, 1024, 1.0, 0.7, [1.88, 1.8]),
-    "plaster": (tex_plaster, 512, 0.9, 0.5, [3.0, 3.0]),
+    "plaster": (tex_plaster, 1024, 0.9, 0.5, [3.0, 3.0]),
     "concrete": (tex_concrete, 512, 0.8, 0.45, [2.4, 2.4]),
     "planks": (tex_planks, 512, 0.9, 0.6, [2.4, 2.4]),
     "timber": (tex_timber, 512, 1.0, 0.6, [2.0, 2.0]),

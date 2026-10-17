@@ -128,7 +128,7 @@ AZ.registerLevel({
 
     // ================================================================ gallery + depot
     L.floor(S, 0, 14, 28, 32, 0, "concrete");
-    L.box(S, 28, 4, 7, "concrete", 0, 2, 1.5); L.box(S, 28, 0.1, 7, "iron", 0, 4.02, 1.5, { solid: false });
+    L.box(S, 28, 4, 7, "concrete", 0, 2, 1.5); L.box(S, 28, 0.1, 7.04, "iron", 0, 4.02, 1.5, { solid: false }); // plate overhangs the edge (was coplanar)
     L.wall(S, -14, -2, 14, -2, 9, "tile"); L.wall(S, -14, -2, -14, 30, 9, "tile");
     L.wallDoor(S, 14, -2, 14, 30, 9, "tile", 1.8, 2.6, 24 / 32);
     L.wallDoor(S, -14, 30, 14, 30, 9, "tile", 4, 3.4);
@@ -220,7 +220,7 @@ AZ.registerLevel({
 
     // ================================================================ station
     L.floor(S, -4.5, 65, 19, 26, 0, "tile"); L.floor(S, -10, 81, 8, 6, 0, "tile"); L.floor(S, 2.5, 81, 5, 6, 0, "tile");
-    L.floor(S, 9.5, 76, 9, 48, -1.2, "concrete"); L.box(S, 0.3, 1.2, 32, "concrete", 5, -0.6, 68); L.box(S, 0.4, 0.02, 32, "neonA", 4.6, 0.01, 68, { solid: false });
+    L.floor(S, 9.5, 76, 9, 48, -1.2, "concrete"); L.box(S, 0.3, 1.2, 32, "concrete", 5, -0.6, 68).position.y -= 0.012; // mesh under the tile edge (z-fighting) L.box(S, 0.4, 0.02, 32, "neonA", 4.6, 0.01, 68, { solid: false });
     track(S, 9.5, 52.5, 9.5, 100, -1.2);
     L.wall(S, -14, 52, -14, 84, 8, "tile"); L.wall(S, 14, 52, 14, 84, 9.2, "tile", 0.4, -1.2);
     L.wall(S, -14, 84, 7, 84, 8, "tile"); L.wall(S, 12, 84, 14, 84, 9.2, "tile", 0.4, -1.2); L.wall(S, 7, 84, 12, 84, 4.9, "tile", 0.4, 3.3);
@@ -315,7 +315,8 @@ AZ.registerLevel({
 
     // ================================================================ lift shaft + climax
     L.wall(S, -6, 78, -6, 84, 7, "iron", 0.3); L.wall(S, 0, 78, 0, 84, 7, "iron", 0.3); L.wallDoor(S, -6, 78, 0, 78, 7, "iron", 3.4, 2.7, 0.5, 0.3);
-    L.wall(S, -6, 78, -6, 84, 6.5, "concrete", 0.3, -6.5); L.wall(S, 0, 78, 0, 84, 6.5, "concrete", 0.3, -6.5); L.wall(S, -6, 78, 0, 78, 6.5, "concrete", 0.3, -6.5);
+    [L.wall(S, -6, 78, -6, 84, 6.5, "concrete", 0.3, -6.5), L.wall(S, 0, 78, 0, 84, 6.5, "concrete", 0.3, -6.5), L.wall(S, -6, 78, 0, 78, 6.5, "concrete", 0.3, -6.5)]
+      .forEach(m => { m.position.y -= 0.012; }); // shaft wall tops were coplanar with the tiled floor (mesh only)
     L.wallDoor(S, -6, 84, 0, 84, 6, "concrete", 3, 2.8, 0.5, 0.3, -6);
     L.label(S, "LIFT - DEEP LEVEL", -3, 3.4, 77.8, Math.PI, 0.35, COLD, "rgba(8,12,18,.9)");
     L.door(S, 3.4, 2.7, 0.12, "rust", -3, 0, 78, ["L04.liftPowered"], [0, 2.75, 0], { toast: "Power hums through the coupling. The lift gate grinds open." });

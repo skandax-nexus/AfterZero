@@ -350,7 +350,7 @@ AZ.registerLevel({
     // ---------------- archive alcove of every cycle's letter (optional side area) ----------------
     L.wall(S, -15, -41, -15, -31, 5, "obsidian", 0.5); L.wall(S, -15, -31, -5, -31, 5, "obsidian", 0.5); L.wall(S, -15, -41, -5, -41, 5, "obsidian", 0.5);
     L.box(S, 10.4, 0.4, 10.4, "obsidian", -10, 5.2, -36);
-    L.floor(S, -10, -36, 10, 10, 0, "woodDark");
+    L.floor(S, -10, -36, 10, 10, 0, "woodDark").position.y += 0.012; // mesh only: sits on the obsidian floor (z-fighting)
     L.label(S, "ARCHIVE OF CYCLES", -4.65, 3.5, -36, Math.PI / 2, 0.35, "#ffd8a0");
     const shelves = [[-14.5, -39.3, Math.PI / 2], [-14.5, -37.1, Math.PI / 2], [-14.5, -34.9, Math.PI / 2], [-14.5, -32.7, Math.PI / 2], [-12.6, -31.5, Math.PI], [-10.2, -31.5, Math.PI], [-7.8, -31.5, Math.PI], [-12.6, -40.5, 0], [-10.2, -40.5, 0], [-7.8, -40.5, 0]];
     shelves.forEach(([x, z, ry], i) => {
@@ -380,7 +380,7 @@ AZ.registerLevel({
     for (let i = 0; i < 8; i++) L.box(S, 4.6, 0.1, 0.12, i % 2 ? "neonV" : "neonC", 0, 4.9, z0 + 2 + i * 3.2, { solid: false, shadow: false });
     L.light(S, 0x80d8ff, 2.2, 12, 0, 4, 36); L.light(S, 0xa080ff, 2.2, 12, 0, 4, 48);
     L.checkpoint(0, 0, 32, Math.PI, { size: [4.6, 2.5, 2] });
-    L.floor(S, 0, 59.5, 16, 7, 0, "stone");
+    L.floor(S, 0, 59.5, 16, 7, 0, "stone").position.y += 0.012; // mesh only: overlaps the obsidian walkway (z-fighting)
     L.wall(S, -8, 63, 8, 63, 1.1, "brass", 0.25); L.wall(S, -8, 56, -8, 63, 1.1, "brass", 0.25); L.wall(S, 8, 56, 8, 63, 1.1, "brass", 0.25);
     L.block(0, 63.3, 16.5, 0.4, 0, 4); L.block(-8.3, 59.5, 0.4, 7.5, 0, 4); L.block(8.3, 59.5, 0.4, 7.5, 0, 4);
     L.wall(S, -8, 56, -2.4, 56, 9, "ruin", 0.8); L.wall(S, 2.4, 56, 8, 56, 9, "ruin", 0.8); L.wall(S, -2.4, 56, 2.4, 56, 4, "ruin", 0.8, 5);

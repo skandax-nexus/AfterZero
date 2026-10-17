@@ -240,7 +240,7 @@ AZ.registerLevel({
     L.when(["L03.hatchOpen"], () => { hatchOpen = true; hatch.userData.collider.on = false; L.sfx("rule"); L.toast("The floor hatch unlatches. The subsurface tram route is open.", 3.5); });
     L.update(dt => { if (hatchOpen && hatchT < 1) { hatchT = Math.min(1, hatchT + dt / 2); hatch.rotation.z = hatchT * 1.9; hatch.position.set(-1.5 + Math.cos(hatchT * 1.9) * 1.5, -0.1 + Math.sin(hatchT * 1.9) * 1.5, 42.25); } });
     L.stairs(S, [0, 0, 40], [0, -3, 44.5], 3, "concrete");
-    L.wall(S, -1.6, 40, -1.6, 44.5, 3, "concrete", 0.2, -3); L.wall(S, 1.6, 40, 1.6, 44.5, 3, "concrete", 0.2, -3);
+    L.wall(S, -1.6, 40, -1.6, 44.5, 3, "concrete", 0.2, -3).position.x += 0.012; L.wall(S, 1.6, 40, 1.6, 44.5, 3, "concrete", 0.2, -3).position.x -= 0.012; // meshes off the floor-slab edges
     L.floor(S, 0, 52.25, 6, 15.5, -3, "concrete");
     L.wall(S, -3, 44.5, -3, 60, 2.6, "tile", 0.4, -3); L.wall(S, 3, 44.5, 3, 60, 2.6, "tile", 0.4, -3); L.wall(S, -3, 60, 3, 60, 2.6, "tile", 0.4, -3);
     L.box(S, 6.4, 0.4, 12, "concrete", 0, -0.2, 54, { solid: false });

@@ -189,7 +189,7 @@ AZ.registerLevel({
     L.box(S, 14, 44, 5, "stone", 0, 22, 69.5);
     L.box(S, 5.8, 44, 1, "stone", -4.1, 22, 62.5); L.box(S, 5.8, 44, 1, "stone", 4.1, 22, 62.5); L.box(S, 2.4, 40.6, 1, "stone", 0, 23.7, 62.5);
     L.box(S, 5, 44, 4, "stone", -4.5, 22, 65); L.box(S, 5, 44, 4, "stone", 4.5, 22, 65); L.box(S, 4, 40, 4, "stone", 0, 24, 65);
-    L.floor(S, 0, 65, 4, 4, 0, "brass");
+    L.floor(S, 0, 65, 4, 4, 0, "brass").position.y += 0.012; // inlaid plate: lift the mesh off the plaza paving (z-fighting)
     L.light(S, 0xffb060, 2, 5, 0, 2.6, 65.5);
     L.door(S, 2.4, 3.4, 0.3, "woodDark", 0, 0, 62.3, [F.truth], [2.5, 0, 0], { toast: "The seal (0) on the tower door unlocks." });
     L.label(S, "(0)", 0, 2.2, 62.1, Math.PI, 0.9, "#ffd890");

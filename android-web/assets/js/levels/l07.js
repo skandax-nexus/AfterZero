@@ -247,7 +247,7 @@ AZ.registerLevel({
     L.floor(S, 0, 39.3, 13.2, 2.6, 6, "brass");
     L.floor(S, -4.1, 33.5, 5, 9.6, 6, "brass");
     L.wall(S, -1.6, 28.7, -1.6, 38, 1, "brass", 0.15, 6);
-    L.box(PA, 14, 0.4, 14, "woodDark", 0, 24.2, 34); L.box(PR, 14, 0.4, 14, "woodDark", 0, 24.2, 34);
+    L.box(PA, 14.3, 0.4, 14.3, "woodDark", 0, 24.2, 34); L.box(PR, 14.3, 0.4, 14.3, "woodDark", 0, 24.2, 34); // proud cornice (was flush: z-fighting)
     L.box(PA, 14, 14, 14, "stone", 0, 31, 34, { solid: false }); L.box(PR, 14, 14, 14, "stone", 0, 31, 34, { solid: false });
     L.cyl(PA, 4, 0.2, "paper", 0, 30, 26.85).rotation.x = Math.PI / 2; L.cyl(PR, 4, 0.2, "cold", 0, 30, 26.85).rotation.x = Math.PI / 2;
     L.mesh(PA, "cone4", "copper", 0, 42, 34, 12, 8, 12); L.mesh(PR, "cone4", "copper", 0, 42, 34, 12, 8, 12);

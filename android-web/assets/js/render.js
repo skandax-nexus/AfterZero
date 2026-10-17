@@ -56,7 +56,7 @@
     cobble: { tile: [2.0, 2.0], mean: [0.0917, 0.0801, 0.0673], rough: 0.7154 },
     flagstone: { tile: [2.4, 2.4], mean: [0.3944, 0.3307, 0.2267], rough: 0.8111 },
     brick: { tile: [1.88, 1.8], mean: [0.139, 0.0707, 0.048], rough: 0.8931 },
-    plaster: { tile: [3.0, 3.0], mean: [0.5884, 0.4905, 0.334], rough: 0.9032 },
+    plaster: { tile: [3.0, 3.0], mean: [0.5885, 0.4905, 0.334], rough: 0.9032 },
     concrete: { tile: [2.4, 2.4], mean: [0.2288, 0.2176, 0.1964], rough: 0.878 },
     planks: { tile: [2.4, 2.4], mean: [0.1563, 0.0663, 0.025], rough: 0.689 },
     timber: { tile: [2.0, 2.0], mean: [0.0365, 0.0173, 0.0077], rough: 0.7516 },
@@ -73,7 +73,7 @@
   const embedded = f => { const e = window.AZ_TEXTURES && window.AZ_TEXTURES[f]; return e ? (/^data:/.test(e) ? e : "data:application/octet-stream;base64," + e) : null; };
   const WHITE = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat); WHITE.needsUpdate = true;
   const FLAT = new THREE.DataTexture(new Uint8Array([128, 128, 200, 255]), 1, 1, THREE.RGBAFormat); FLAT.needsUpdate = true;
-  const TEXSETS = {}; // name -> { alb, nrm, ready: {value}, users: [] }
+  const TEXSETS = {}; // name -> { alb, nrm (shared uniform objects), ready, started, onReady: [] }
   const loadedTex = [];
   let texAniso = 1;
   function texSet(name) {
