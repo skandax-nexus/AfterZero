@@ -65,7 +65,7 @@ AZ.registerLevel({
     L.box(S, 5.4, 0.4, 12, "obsidian", 0, 5.2, -24);
     for (let i = 0; i < 4; i++) { L.box(S, 0.05, 2.4, 0.12, "neonC", -2.12, 2.6, -29 + i * 3, { solid: false, shadow: false }); L.box(S, 0.05, 2.4, 0.12, "neonC", 2.12, 2.6, -29 + i * 3, { solid: false, shadow: false }); }
     L.label(S, "(0)", 0, 5.6, -30.35, 0, 1.2, "#dff4ff");
-    L.label(S, "ZERO CHAMBER", 0, 6.2, -41.6, Math.PI, 0.6, "#9fe6ff");
+    L.label(S, "ZERO CHAMBER", 0, 6.2, -41.6, 0, 0.6, "#9fe6ff");
     L.light(S, 0x9fd8ff, 2.2, 12, 0, 5, -37); L.light(S, 0x50e8ff, 1.8, 10, 0, 4, -24);
     L.player(0, 0, -39, Math.PI);
     L.checkpoint(0, 0, -39, Math.PI, { size: [8, 2.5, 4] });
@@ -351,7 +351,7 @@ AZ.registerLevel({
     L.wall(S, -15, -41, -15, -31, 5, "obsidian", 0.5); L.wall(S, -15, -31, -5, -31, 5, "obsidian", 0.5); L.wall(S, -15, -41, -5, -41, 5, "obsidian", 0.5);
     L.box(S, 10.4, 0.4, 10.4, "obsidian", -10, 5.2, -36);
     L.floor(S, -10, -36, 10, 10, 0, "woodDark");
-    L.label(S, "ARCHIVE OF CYCLES", -4.65, 3.5, -36, -Math.PI / 2, 0.35, "#ffd8a0");
+    L.label(S, "ARCHIVE OF CYCLES", -4.65, 3.5, -36, Math.PI / 2, 0.35, "#ffd8a0");
     const shelves = [[-14.5, -39.3, Math.PI / 2], [-14.5, -37.1, Math.PI / 2], [-14.5, -34.9, Math.PI / 2], [-14.5, -32.7, Math.PI / 2], [-12.6, -31.5, Math.PI], [-10.2, -31.5, Math.PI], [-7.8, -31.5, Math.PI], [-12.6, -40.5, 0], [-10.2, -40.5, 0], [-7.8, -40.5, 0]];
     shelves.forEach(([x, z, ry], i) => {
       const fx = Math.sin(ry), fz = Math.cos(ry);

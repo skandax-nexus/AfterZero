@@ -16,7 +16,7 @@ AZ.registerLevel({
     };
     const dynGroup = parent => { const g = new THREE.Group(); g.userData.dynamic = true; parent.add(g); return g; };
 
-    L.look({ fog: 0.55, past: { density: 0.01, hemiI: 1.1, exp: 1.15 }, present: { density: 0.018, hemiI: 1.15, exp: 1.3 }, future: { density: 0.014, hemiI: 0.9, exp: 1.25 } });
+    L.look({ fog: 0.55, past: { density: 0.01, hemiI: 0.9, exp: 0.92 }, present: { density: 0.018, hemiI: 1.15, exp: 1.3 }, future: { density: 0.014, hemiI: 0.9, exp: 1.25 } });
 
     L.intro(line("Arin", "The clockworks. Flooded right up to the stair."),
       line("The Witness", "In the PAST this tower was whole. In the PRESENT it drowns. There is a third state, Arin. Not yet."),

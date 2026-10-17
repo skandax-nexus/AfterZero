@@ -109,10 +109,14 @@ CAST = [
          accentColor="e8e4dc", acc=["apron"]),
     # ---- Keepers ----
     dict(id="keeper", macro=dict(gender=0.85, age=0.55, muscle=0.75, weight=0.5, height=0.8, caucasian=0.5, african=0.25, asian=0.25),
-         skin="c09070", hair="none", top="robe", colorA="15141a", colorB="15141a", hat="hood", hatMat="clothA", acc=["mask", "belt"],
+         details={"eyebrows/eyebrows-angle-down|up": -0.6, "eyebrows/eyebrows-trans-down|up": -0.4, "chin/chin-prominent-decr|incr": 0.4, "head/head-square": 0.5, **sym(cheek_bones=0.4)},
+         stubble=0.7, eyes="3a3028", lip="8a5a50",
+         skin="c09070", hair="none", top="robe", colorA="15141a", colorB="15141a", hat="hood", hatMat="clothA", acc=["belt"],
          metalColor="3a3530", trimColor="3a2a18", boots=0.2),
     dict(id="keeper_b", macro=dict(gender=0.4, age=0.5, muscle=0.6, weight=0.45, height=0.65, caucasian=0.4, african=0.3, asian=0.3),
-         skin="b08060", hair="none", top="robe", colorA="221a14", colorB="221a14", hat="hood", hatMat="clothA", acc=["mask", "belt"],
+         details={"eyebrows/eyebrows-angle-down|up": -0.5, "head/head-oval": 0.4, "mouth/mouth-scale-horiz-decr|incr": -0.2, **sym(cheek_bones=0.5)},
+         eyes="2a2018", lip="8a5a50",
+         skin="b08060", hair="none", top="robe", colorA="221a14", colorB="221a14", hat="hood", hatMat="clothA", acc=["belt"],
          metalColor="4a4e56", trimColor="2a2018", boots=0.2),
     # ---- townsfolk ----
     dict(id="town_m1", macro=dict(gender=1.0, age=0.6, muscle=0.5, weight=0.55, height=0.55, caucasian=0.8, african=0.2, asian=0),

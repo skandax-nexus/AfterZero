@@ -220,7 +220,17 @@
       const sh = dist < 22 && opts.shadow !== false;
       if (sh !== h._sh) { h._sh = sh; meshes.forEach(m => { m.castShadow = sh; }); }
     };
-    h.setHolo = color => { const m = H.holoMat(color); meshes.forEach(o => { o.material = m; o.castShadow = false; o.receiveShadow = false; }); };
+    // Echoes (people seen across time) stay real people: their own skin and clothes, with a faint glow of their time state.
+    h.setHolo = color => {
+      const tint = new THREE.Color({ magenta: 0xff70d8, amber: 0xffb060 }[color] || 0x60d8ff);
+      meshes.forEach(o => {
+        o.material = [].concat(o.material).map(m => variant(m, "echo" + color, v => {
+          v.emissive = tint.clone(); v.emissiveIntensity = 0.28; v.transparent = true; v.opacity = 0.88;
+        }));
+        if (o.material.length === 1) o.material = o.material[0];
+        o.castShadow = false;
+      });
+    };
     h.play("idle", 0);
     if (opts.holo) h.setHolo(opts.holo);
     return h;

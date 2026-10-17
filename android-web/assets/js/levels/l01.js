@@ -43,8 +43,16 @@ AZ.registerLevel({
     L.box(S, 14, 3, 10, "stone", 0, 1.5, -11);
     L.box(PR, 13.6, 0.02, 9.6, "puddle", 0, 3.01, -11, { solid: false });
     L.stairs(S, [0, 3, -6], [0, 0, -1.5], 3, "stone");
-    for (const x of [-4.25, 4.25]) L.box(S, 5.5, 1, 0.15, "brass", x, 3.5, -6.2);
-    for (const x of [-6.9, 6.9]) L.box(S, 0.15, 1, 10, "brass", x, 3.5, -11);
+    // terrace railings: same blocking volumes as before, drawn as wrought-iron balusters under a brass handrail
+    const railing = (x, z, w, d) => {
+      L.block(x, z, w, d, 3, 4);
+      const along = w > d, len = Math.max(w, d), n = Math.round(len / 0.24);
+      L.box(S, along ? len : 0.09, 0.07, along ? 0.09 : len, "brass", x, 3.97, z, { solid: false });
+      L.box(S, along ? len : 0.05, 0.05, along ? 0.05 : len, "iron", x, 3.12, z, { solid: false });
+      for (let i = 0; i <= n; i++) { const t = -len / 2 + (i * len) / n; L.cyl(S, 0.018, 0.86, "iron", along ? x + t : x, 3.5, along ? z : z + t, { seg: 8 }); }
+    };
+    for (const x of [-4.25, 4.25]) railing(x, -6.2, 5.5, 0.15);
+    for (const x of [-6.9, 6.9]) railing(x, -11, 0.15, 10);
     L.box(S, 18, 14, 2, "stone", 0, 7, -17);
     L.box(PA, 5, 3, 0.1, "window", 0, 4.5, -15.95, { solid: false });
     L.box(PR, 5, 3, 0.1, "windowCold", 0, 4.5, -15.95, { solid: false });

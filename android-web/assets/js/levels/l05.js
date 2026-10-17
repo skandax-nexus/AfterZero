@@ -52,7 +52,10 @@ AZ.registerLevel({
     L.wall(S, -12, -36, 12, -36, 4, "brick", 0.5, 3);
     L.wall(S, -12, -36, -12, -24, 1.05, "stone", 0.4, 3);
     L.wall(S, 12, -36, 12, -24, 1.05, "stone", 0.4, 3);
-    L.label(S, "OLD VEYRA FLOOD BASIN  -  WEIR STAIRS", 0, 2.3, -23.9, PI, 0.3, TW, "rgba(10,10,14,.8)");
+    // name board spanning the stair walls (was buried inside the steps, facing the terrace face)
+    L.box(S, 4.8, 0.55, 0.14, "woodDark", 0, 4.17, -19.7, { solid: false });
+    L.label(S, "OLD VEYRA FLOOD BASIN  -  WEIR STAIRS", 0, 4.17, -19.62, 0, 0.3, TW, "rgba(10,10,14,.8)");
+    L.label(S, "OLD VEYRA FLOOD BASIN  -  WEIR STAIRS", 0, 4.17, -19.78, PI, 0.3, TW, "rgba(10,10,14,.8)");
     // Corner terraces (solid masses, windows on lanes/square)
     const B = (x, z, w, h, d, m, s) => L.building(S, x, z, w, h, d, m, "windowCold", s);
     B(-21, -20, 14, 8, 8, "plaster", 1); B(-25, -12, 6, 8, 8, "brick", 2); B(-21, -5, 14, 7, 6, "plaster", 3);
@@ -65,7 +68,7 @@ AZ.registerLevel({
     L.skyline(S, 0, 0, 55, 80, 10, "plasterCold", 5);
     L.box(S, 9, 52, 9, "stone", 0, 26, 92, { solid: false, noEcho: true });
     L.box(S, 11, 6, 11, "brass", 0, 55, 92, { solid: false, noEcho: true });
-    L.holoMesh(S, "cyl", "amber", 0, 47, 87.4, 7, 0.1, 7).rotation.x = PI / 2;
+    L.clockFace(S, 0, 47, 87.5, 3.5);
     L.label(S, "(0)", 0, 47, 87.2, PI, 3, "#34445a");
     L.light(S, 0xe8f0ff, 4, 30, 0, 47, 84);
 
@@ -95,19 +98,19 @@ AZ.registerLevel({
     // PRESENT basin flood: windows-high until the pump is mended in the PAST.
     L.water({ group: PR, at: [-2.9, -2.5], size: [38.6, 37], high: 2.2, low: 0.35, lowWhen: [F.pump], mask: 2, speed: 1.4, drainedFlag: "L05.basinDrained" });
     L.water({ group: PR, at: [19, 9], size: [9.6, 9.6], high: 2.2, low: 0.35, lowWhen: [F.pump], mask: 2, speed: 0.8 });   // schoolhouse
-    L.label(PR, "- FLOOD LINE 2.2 M -", -13.75, 2.25, -18, -PI / 2, 0.18, TC);
-    L.label(PR, "- FLOOD LINE 2.2 M -", 13.75, 2.25, -18, PI / 2, 0.18, TC);
+    L.label(PR, "- FLOOD LINE 2.2 M -", -13.75, 2.25, -18, PI / 2, 0.18, TC);
+    L.label(PR, "- FLOOD LINE 2.2 M -", 13.75, 2.25, -18, -PI / 2, 0.18, TC);
 
     // ================= Beat 2: sluices + lanes =================
     L.room(S, -18, -12, 8, 8, 4.6, "stoneWet", null, [1], "woodDark");
     L.label(S, "SLUICE HOUSE", -13.75, 3.3, -12, PI / 2, 0.4, TW);
     L.box(PR, 0.15, 2.6, 6.4, "copper", -21.6, 1.8, -12);
-    L.label(PR, "LANE SLUICES - TURN TO SEND EACH LANE TO THE CULVERT", -21.45, 3.4, -12, -PI / 2, 0.16, TC);
+    L.label(PR, "LANE SLUICES - TURN TO SEND EACH LANE TO THE CULVERT", -21.45, 3.4, -12, PI / 2, 0.16, TC);
     const lanes = [["WEST LANE (VELL) <<", F.sW, "west"], ["NORTH LANE (CORRAN) [ ]", F.sN, "north"], ["EAST LANE (OSKEL) >>", F.sE, "east"]];
     lanes.forEach((ln, i) => {
       const z = -14 + i * 2;
       const wheel = L.mesh(PR, "torus", "rust", -21.2, 1.5, z, 0.9, 0.9, 0.9); wheel.rotation.y = PI / 2; wheel.userData.dynamic = true;
-      L.label(PR, ln[0], -21.4, 2.35, z, -PI / 2, 0.13, TC);
+      L.label(PR, ln[0], -21.4, 2.35, z, PI / 2, 0.13, TC);
       let spin = 0;
       L.update(dt => { if (spin > 0) { spin -= dt; wheel.rotation.z += dt * 4; } });
       L.interact({ at: [-21.2, 1.5, z], mesh: wheel, mask: 2, prompt: "Turn the " + ln[2] + " lane sluice", requires: [F.pump], once: true,
@@ -115,7 +118,7 @@ AZ.registerLevel({
         onUse: () => { spin = 2.2; L.sfx("clang"); L.set(ln[1]); } });
     });
     L.light(PR, 0xff9a48, 1.6, 9, -18, 4, -12);
-    L.label(PA, "CULVERT GATES OPEN\nAS LONG AS THE PUMP RUNS", -21.45, 2.2, -12, -PI / 2, 0.2, TW);
+    L.label(PA, "CULVERT GATES OPEN\nAS LONG AS THE PUMP RUNS", -21.45, 2.2, -12, PI / 2, 0.2, TW);
     L.light(PA, 0xffb469, 1.4, 8, -18, 3.8, -12);
     L.crystals(FU, 3, -20, -14.5, 2, 2);
     // lanes: [name, flag, water centre, water size, gate pos, gate is along x?, crystal pos, house door pos]
@@ -142,9 +145,9 @@ AZ.registerLevel({
       L.box(S, 7.6, 0.03, 7.6, "woodDark", cx, 0.015, cz, { solid: false });
       L.box(S, 8.4, 3.6, 8.4, "brick", cx, 6.6, cz, { solid: false });
       const fx = cx + tdx * 4.3, fz = cz + tdz * 4.3, ryOut = Math.atan2(-tdx, -tdz) + PI;
-      L.label(S, family.toUpperCase(), fx, 3.1, fz, Math.atan2(tdx, tdz) + PI, 0.3, TW);
+      L.label(S, family.toUpperCase(), fx, 3.1, fz, Math.atan2(tdx, tdz), 0.3, TW); // faces the street
       const bx = cx - tdx * 3.65, bz = cz - tdz * 3.65, rx = tdz, rz = -tdx;   // back wall + its tangent
-      const ryIn = Math.atan2(tdx, tdz) + PI;                                   // read by someone facing the back wall
+      const ryIn = Math.atan2(tdx, tdz);                                        // read by someone facing the back wall
       const pw = [bx + rx * -1.8 + tdx * 0.1, bz + rz * -1.8 + tdz * 0.1], cal = [bx + rx * 1.8 + tdx * 0.12, bz + rz * 1.8 + tdz * 0.12];
       const flat = Math.abs(tdx) > 0.5;
       // PAST: supper, an intact portrait, a resident at home.
@@ -197,7 +200,7 @@ AZ.registerLevel({
     L.label(S, "LAUNDRY ALLEY", 14.1, 3.4, -9.9, PI / 2, 0.3, TW);
     // PAST yard: fence, sagging beam, three shore sockets.
     L.box(PA, 0.15, 2.4, 3, "wood", 19.3, 1.2, -12);
-    L.label(PA, "LAUNDRY CLOSED\nFOR BELL DAY", 19.2, 1.9, -12, PI / 2, 0.2, TW);
+    L.label(PA, "LAUNDRY CLOSED\nFOR BELL DAY", 19.2, 1.9, -12, -PI / 2, 0.2, TW);
     const beam = L.box(PA, 3.4, 0.35, 0.35, "woodDark", 17.5, 3.3, -12, { solid: false }); beam.rotation.z = -0.1;
     L.label(PA, "the yard beam sags - shore it up", 15.2, 3, -12, PI / 2, 0.16, TW);
     L.cyl(PA, 0.55, 1, "brass", 28.6, 0.5, -14.5); L.cyl(PA, 0.55, 1, "brass", 28.6, 0.5, -12.1);
@@ -214,10 +217,10 @@ AZ.registerLevel({
       const x = 16.5 + i;
       const bank = L.box(PR, 0.95, 2.6, 3, i === 1 ? "brick" : "concrete", x, 1.3, -12, { dynamic: true });
       const spill = L.box(PR, 1, 0.7, 1.2, "ruin", x - 0.2, 0.35, -11.2, { dynamic: true, solid: false });
-      const tag = L.label(PR, "RUBBLE " + (i + 1), x - 0.5, 2.2, -12, PI / 2, 0.16, TC);
+      const tag = L.label(PR, "RUBBLE " + (i + 1), x - 0.5, 2.2, -12, -PI / 2, 0.16, TC);
       L.socket({ group: PA, at: [x, 0.03, -12], radius: 0.4, accepts: "shore", flag: fl, prompt: "Set the shore under the beam (" + (i + 1) + ")", wrong: "Only a timber shore fits under the beam.",
         onPlace: h => { h.mesh.position.y = 0.72; } });
-      L.label(PA, "SHORE " + (i + 1), x - 0.45, 1.7, -12, PI / 2, 0.14, TW);
+      L.label(PA, "SHORE " + (i + 1), x - 0.45, 1.7, -12, -PI / 2, 0.14, TW);
       const sp = spawns[i];
       L.item({ group: PA, at: [sp[0], 0.7, sp[1]], key: "shore", name: "timber shore", mesh: L.box(PA, 0.22, 1.4, 0.22, "wood", sp[0], 0.7, sp[1], { solid: false, dynamic: true }) });
       L.label(PA, "TIMBER SHORE\n" + sp[2], sp[0], 1.75, sp[1], PI, 0.12, TW);
@@ -343,7 +346,7 @@ AZ.registerLevel({
     L.holoMesh(FU, "box", "magenta", -18, 2.6, 10, 0.02, 0.6, 1.8, { bob: 0.05 });
     L.label(FU, "ARCHIVE PURGED", -17.95, 2.6, 10, -PI / 2, 0.24, "#ffffff");
     L.box(PR, 0.9, 0.8, 0.9, "stoneWet", -20.6, 0.4, 8.2); L.box(PR, 0.9, 0.8, 0.9, "stoneWet", -20.6, 0.4, 11.8);
-    L.label(PR, "- - - FLOOD LINE - - -", -21.75, 2.2, 10, -PI / 2, 0.18, TC);
+    L.label(PR, "- - - FLOOD LINE - - -", -21.75, 2.2, 10, PI / 2, 0.18, TC);
     L.light(PR, 0x7fc0d8, 1.4, 8, -18, 3.8, 10);
     const alarm = L.light(PR, 0xff2a1a, 0, 9, -15, 3.8, 10);
     const regMesh = L.box(PR, 0.75, 0.5, 0.55, "wood", -20.6, 1.05, 8.2, { solid: false, dynamic: true });
@@ -402,7 +405,7 @@ AZ.registerLevel({
     // ================= Optional: the flooded schoolhouse =================
     L.room(S, 19, 9, 10, 10, 4.6, "brick", null, [3], "woodDark");
     L.box(S, 9.6, 0.03, 9.6, "wood", 19, 0.015, 9, { solid: false });
-    L.label(S, "WARD ZERO INFANTS SCHOOL", 13.75, 3.4, 9, PI / 2, 0.3, TW);
+    L.label(S, "WARD ZERO INFANTS SCHOOL", 13.75, 3.4, 9, -PI / 2, 0.3, TW);
     L.box(S, 0.08, 1.6, 3.6, "ruin", 23.7, 2, 9);
     for (let r = 0; r < 3; r++) for (let k = 0; k < 2; k++) L.box(PA, 0.9, 0.76, 1.4, "wood", 16.2 + r * 2, 0.38, 6.6 + k * 4);
     L.label(PA, "BELL DAY TOMORROW\nwarm coats - hold hands - no running\ntwo by two up to the tower", 23.62, 2.1, 9, -PI / 2, 0.16, "#ffffff");

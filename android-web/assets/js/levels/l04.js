@@ -297,7 +297,7 @@ AZ.registerLevel({
     L.holoMesh(FU, "box", "cyan", 0, 4.5, 66, 5, 2.2, 0.02, { bob: 0.06 });
     L.label(FU, "LINE 4 // DEPARTURES\nCAR 1-6 ..... EVACUATED\nALL OTHERS ..... 0", 0, 4.5, 65.95, Math.PI, 0.28, "#9fffff");
     L.holoMesh(FU, "torus", "magenta", -3, 6, 81, 5, 5, 1, { spin: 0.4 }).rotation.x = HALF;
-    L.label(FU, "TERMINUS : DROWNED DISTRICT", -3, 6.6, 78.4, Math.PI, 0.3, "#ffa0e8");
+    L.label(FU, "TERMINUS : DROWNED DISTRICT", -3, 6.6, 78.4, 0, 0.3, "#ffa0e8");
     L.light(FU, 0x40d8ff, 2.4, 20, -6, 5, 64);
     L.particles(FU, "motes", [26, 7, 30], [0, 0.5, 68], 300);
     L.ambient("drone", 0.3, 4);

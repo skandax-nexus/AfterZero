@@ -295,7 +295,7 @@ AZ.registerLevel({
     L.exit({ group: S, at: [0, 0, 41.3], size: [2.2, 2.5, 1.2], requires: [F.witness, F.zero], locked: "The way back is sealed. The Witness said to take the carved zero." });
     L.box(S, 12, 70, 12, "stone", 0, 10, 120, { solid: false, noEcho: true });
     L.box(S, 15, 8, 15, "brass", 0, 47, 120, { solid: false, noEcho: true });
-    L.holoMesh(S, "cyl", "amber", 0, 38, 113.8, 9, 0.1, 9).rotation.x = PI / 2;
+    L.clockFace(S, 0, 38, 114, 4.5);
     L.label(S, "(0)", 0, 38, 113.6, PI, 4, "#34445a");
     L.light(S, 0xe8f0ff, 4, 30, 0, 38, 108);
 

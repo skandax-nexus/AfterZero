@@ -30,7 +30,8 @@ AZ.registerLevel({
     const city = new THREE.Group(); S.add(city);
     for (let i = 0; i < 36; i++) { const side = i % 2 ? 1 : -1, h = 4 + Math.random() * 16; const b = L.box(city, 5, h, 4, "plaster", side * (9 + Math.random() * 8), h / 2 - 3, -60 + i * 3.4, { solid: false, dynamic: true, noEcho: true }); }
     L.update(dt => city.children.forEach(b => { b.position.z += dt * 22; if (b.position.z > 62) b.position.z -= 124; }));
-    L.particles(S, "rain", [30, 14, 60], [0, -2, 0], 900);
+    // rain outside the carriage only (one volume per side; the old single volume fell through the aisle)
+    for (const sx of [-1, 1]) L.particles(S, "rain", [12.5, 14, 60], [sx * 8.75, -2, 0], 450);
     L.ambient("machine", 0.28); L.ambient("rain", 0.22);
 
     L.player(0, 0, -7.9, Math.PI);

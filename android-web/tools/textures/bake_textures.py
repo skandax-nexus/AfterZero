@@ -19,7 +19,7 @@ Sky environments (written to assets/textures/):
     sky, then gets a rainy overcast deck lit from below by sodium city glow; FUTURE is a re-tinted physical sky with an
     alien violet atmosphere, aurora bands, a second moon and stars.
 
-A manifest (assets/textures/manifest.json) records each set's mean linear albedo and mean roughness; render.js keeps
+A manifest (tools/textures/manifest.json, not shipped) records each set's mean linear albedo and mean roughness; render.js keeps
 a copy of those numbers in R.TEXTURES so the material colours chosen by the level code stay authoritative (the
 texture contributes relative variation: colour * tex / mean).
 """
@@ -343,10 +343,10 @@ def tex_concrete(n):
     h = 0.8 * fbm(x, y, 64, 3, 91) + 0.5 * fbm(x, y, 8, 3, 92)
     F1, F2, ID, _, _ = voronoi(x, y, 70, 70, 93, jitter=0.9)
     rad = per_id(ID, 94, 1, 0.0, 1.0)
-    holes = (F1 < 0.0022 * rad) & (rad > 0.55)
+    holes = (F1 < 0.0016 * rad) & (rad > 0.82)
     hole = holes.astype(np.float64)
     hole = np.clip(blur(hole, 0.7) * 1.6, 0, 1)
-    h -= hole * 2.0
+    h -= hole * 0.9
     seamx = 1 - sstep(0.0008, 0.0022, np.minimum(np.abs(x - 0.0), np.minimum(np.abs(x - 1.0), np.abs(x - 0.5))))
     seamy = 1 - sstep(0.0008, 0.0022, np.minimum(np.abs(y - 0.0), np.abs(y - 1.0)))
     seam = np.maximum(seamx, seamy)
@@ -356,7 +356,7 @@ def tex_concrete(n):
     alb *= (1 + 0.07 * fbm(x, y, 140, 2, 96))[..., None]
     agg = sstep(0.55, 0.75, perlin(x, y, 110, 110, 97))
     alb = mixc(alb, lin(0xa29c92), agg * 0.35)
-    alb *= (1 - 0.55 * hole)[..., None]
+    alb *= (1 - 0.35 * hole)[..., None]
     # streaks down from the tie holes (four per tile) and general run-off
     tie = np.zeros((n, n))
     for tx in (0.25, 0.75):
@@ -845,7 +845,7 @@ def bake_skies():
     deck2 = 0.5 + 0.5 * clouds_on_plane(d, 8, 4, 602, height=0.08)
     glow = np.exp(-np.clip(dy, 0, 1) * 7.0)
     city = lin(0xff9a48) * 0.55 + lin(0xffc68a) * 0.15
-    cloudcol = lin(0x2a3644) * (0.10 + 0.10 * deck)[..., None] + city * (glow * (0.25 + 0.55 * deck2))[..., None]
+    cloudcol = lin(0x2a3644) * (0.10 + 0.10 * deck)[..., None] + city * (glow * (0.12 + 0.3 * deck2))[..., None]
     present = mixc(base, cloudcol, np.clip(0.85 + 0.15 * deck, 0, 1) * sstep(-0.02, 0.05, dy))
     # moon behind the deck: soft bright patch
     md = np.array(SUN["present"], float)
@@ -853,7 +853,7 @@ def bake_skies():
     cosM = dx * md[0] + dy * md[1] + dz * md[2]
     present += lin(0x9ab6d8) * (np.clip(cosM, 0, 1) ** 60 * 0.6 * (1.2 - deck))[..., None]
     # horizon: lit city haze
-    present += city * (np.exp(-np.abs(dy) * 18) * 0.45)[..., None]
+    present += city * (np.exp(-np.abs(dy) * 18) * 0.2)[..., None]
     groundP = lin(0x0c1014) * 0.4 + city * (0.12 * np.exp(dy * 8))[..., None]
     present = np.where(below[..., None], groundP, present)
     out["present"] = present
@@ -920,7 +920,7 @@ def main():
     ap.add_argument("--preview", default="")
     args = ap.parse_args([a for a in sys.argv[1:]])
     os.makedirs(OUT, exist_ok=True)
-    man_path = os.path.join(OUT, "manifest.json")
+    man_path = os.path.join(HERE, "manifest.json")
     manifest = json.load(open(man_path)) if os.path.exists(man_path) else {"sets": {}}
     names = [s for s in args.only.split(",") if s] or list(SETS)
     preview = {} if args.preview else None
@@ -946,6 +946,10 @@ def main():
         for i, im in enumerate(tiles):
             sheet.paste(im, ((i % cols) * 384, (i // cols) * 384))
         sheet.save(args.preview)
+    print("// paste into render.js R.TEXTURES:")
+    for nm, i in manifest["sets"].items():
+        print("    %s: { tile: [%s], mean: [%s], rough: %s }," % (nm, ", ".join(str(v) for v in i["tile"]),
+                                                              ", ".join(str(v) for v in i["mean"]), i["rough"]))
     total = sum(os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT))
     print("assets/textures total: %.2f MB" % (total / 1e6))
 

@@ -53,15 +53,15 @@
   // texture adds relative detail (colour * tex / mean). All maps are seamless, mapped in world space.
   R.TEXTURE_DIR = "textures/";
   R.TEXTURES = {
-    cobble: { tile: [2.0, 2.0], mean: [0.1063, 0.0963, 0.0848], rough: 0.7099 },
+    cobble: { tile: [2.0, 2.0], mean: [0.0917, 0.0801, 0.0673], rough: 0.7154 },
     flagstone: { tile: [2.4, 2.4], mean: [0.3944, 0.3307, 0.2267], rough: 0.8111 },
-    brick: { tile: [1.88, 1.8], mean: [0.1414, 0.0748, 0.0522], rough: 0.8889 },
+    brick: { tile: [1.88, 1.8], mean: [0.139, 0.0707, 0.048], rough: 0.8931 },
     plaster: { tile: [3.0, 3.0], mean: [0.5884, 0.4905, 0.334], rough: 0.9032 },
-    concrete: { tile: [2.4, 2.4], mean: [0.2257, 0.2147, 0.1937], rough: 0.8783 },
+    concrete: { tile: [2.4, 2.4], mean: [0.2288, 0.2176, 0.1964], rough: 0.878 },
     planks: { tile: [2.4, 2.4], mean: [0.1563, 0.0663, 0.025], rough: 0.689 },
     timber: { tile: [2.0, 2.0], mean: [0.0365, 0.0173, 0.0077], rough: 0.7516 },
     metal: { tile: [1.5, 1.5], mean: [0.2446, 0.2446, 0.237], rough: 0.4999 },
-    rust: { tile: [2.0, 2.0], mean: [0.096, 0.0453, 0.0269], rough: 0.8485 },
+    rust: { tile: [2.0, 2.0], mean: [0.1112, 0.0404, 0.0186], rough: 0.8937 },
     roof: { tile: [2.4, 2.4], mean: [0.0501, 0.0536, 0.0621], rough: 0.7251 },
     dirt: { tile: [3.0, 3.0], mean: [0.0988, 0.0781, 0.0546], rough: 0.8668 },
     tiles: { tile: [2.4, 2.4], mean: [0.4301, 0.5167, 0.5268], rough: 0.2408 },
@@ -445,7 +445,7 @@
       cloud: 0xe0b090, clouds: 0.5, stars: 0, glow: 0.6, glowP: 7, disc: 1.2, scat: 0.35, env: 0.4, win: 0xffb36a, winI: 0.8, winN: 0.22 },
     { sky: 0x1c2a38, zen: 0x0a121c, fog: 0x2a3a4a, density: 0.03, sun: 0x9ab6d8, sunI: 0.5, sunPos: [30, 18, -40], hemiS: 0x4a6278, hemiG: 0x0c1014, hemiI: 0.5, exp: 1.0, bloom: 0.8, tint: [0.9, 1.0, 1.08], sat: 0.85, con: 1.1,
       cloud: 0x34465a, clouds: 0.8, stars: 0, glow: 0.35, glowP: 12, disc: 0.6, scat: 0.2, env: 1.0, win: 0xffc68a, winI: 1.1, winN: 0.4 },
-    { sky: 0x1e0e3a, zen: 0x07030f, fog: 0x160a2a, density: 0.022, sun: 0x8a70ff, sunI: 0.4, sunPos: [10, 60, -20], hemiS: 0x3a2a78, hemiG: 0x05030a, hemiI: 0.45, exp: 1.05, bloom: 1.3, tint: [0.95, 0.93, 1.1], sat: 1.15, con: 1.15,
+    { sky: 0x1e0e3a, zen: 0x07030f, fog: 0x160a2a, density: 0.022, sun: 0x8a70ff, sunI: 0.3, sunPos: [10, 60, -20], hemiS: 0x3a2a78, hemiG: 0x05030a, hemiI: 0.45, exp: 1.05, bloom: 1.3, tint: [0.95, 0.93, 1.1], sat: 1.15, con: 1.15,
       cloud: 0x2c1858, clouds: 0.35, stars: 1, glow: 0.5, glowP: 9, disc: 0.8, scat: 0.3, env: 0.75, win: 0xb27cff, winI: 1.3, winN: 0.3 },
   ];
   R.weights = [0, 1, 0];
@@ -496,7 +496,7 @@
   }
   // Baked physical sky (RGBE equirect, nearest-sampled + decoded here) tinted by how far the level's look has moved
   // away from the default look, so per-level colour overrides still steer the image-based lighting.
-  const ENV_HDR_I = [0.5, 1.6, 0.4], ENV_HDR_MAX = [40, 6, 12];
+  const ENV_HDR_I = [0.5, 1.6, 0.16], ENV_HDR_MAX = [40, 6, 12];
   let envHdr = null;
   function hdrMaterial() {
     return new THREE.ShaderMaterial({
@@ -644,9 +644,9 @@
     window: new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xffa858, emissiveIntensity: 1.2 }),
     windowCold: new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x6aa6e8, emissiveIntensity: 0.5 }),
     windowDark: new THREE.MeshStandardMaterial({ color: 0x07090c, roughness: 0.06, metalness: 0.85 }),
-    water: new THREE.MeshStandardMaterial({ color: 0x0e2a33, roughness: 0.05, metalness: 0.6, transparent: true, opacity: 0.82 }),
+    water: new THREE.MeshStandardMaterial({ color: 0x0b2229, roughness: 0.06, metalness: 0.55, transparent: true, opacity: 0.86 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x8fb4c8, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.2 }),
-    puddle: M(0x0a0f14, 0.03, 0.35),
+    puddle: M(0x2c3034, 0.03, 0.0),
     neonC: B(0x55f0ff), neonM: B(0xff40c8), neonA: B(0xffa040), neonV: B(0x9a60ff), warm: B(0xffd28a), cold: B(0xbfe2ff), red2: B(0xff3020), zero: B(0xf2fbff), green: B(0x60ff90),
   });
   MAT.windowDark.userData.envMul = 1.6; MAT.puddle.userData.envMul = 1.5; MAT.stoneWet.userData.envMul = 1.3;
@@ -666,6 +666,7 @@
     azWP = modelMatrix * azWP; vAzPos = azWP.xyz; vAzN = mat3( modelMatrix ) * azON;`;
   const DET_PARS = `uniform sampler2D azNoise; uniform sampler2D azAlb; uniform sampler2D azNrm; uniform vec4 azGlobal; uniform vec4 azWin;
     uniform vec4 azMat; uniform vec4 azMat2; uniform vec4 azMat3; uniform vec4 azTex; uniform vec4 azTexS; uniform vec3 azTexM;
+    uniform sampler2D azAlbV; uniform sampler2D azNrmV; uniform vec4 azTexV; uniform vec3 azTexMV;
     varying vec3 vAzPos; varying vec3 vAzN;
     ${HASH}
 `;
@@ -678,9 +679,11 @@
     vec2 azUV = azP * azTexS.xy;
     vec4 azNT = vec4( 0.5, 0.5, 1.0, 1.0 );
     if ( azTex.x > 0.5 ) {
-      vec3 azTA = texture2D( azAlb, azUV ).rgb;
+      vec3 azTA = texture2D( azAlb, azUV ).rgb, azTM = azTexM;
+      // materials with a separate wall set (e.g. wet cobbles underfoot, wet ashlar on walls): uniform branch
+      if ( azTexV.x > 0.5 ) { azTA = mix( azTA, texture2D( azAlbV, azP * azTexV.yz ).rgb, azVert ); azTM = mix( azTM, azTexMV, azVert ); }
       azTA = azTA * ( azTA * ( azTA * 0.305306011 + 0.682171111 ) + 0.012522878 );
-      diffuseColor.rgb *= mix( vec3( 1.0 ), azTA * azTexM, azTex.y );
+      diffuseColor.rgb *= mix( vec3( 1.0 ), azTA * azTM, azTex.y );
     }
     if ( azGlobal.x > 0.5 ) {
       azAA = max( length( fwidth( azP ) ) * 0.7, 1e-4 );
@@ -688,7 +691,9 @@
       float fam = azMat.x;
       if ( azTex.x > 0.5 ) {
         azNT = texture2D( azNrm, azUV );
-        float azR = azNT.b * azTexS.z;
+        float azRM = azTexS.z;
+        if ( azTexV.x > 0.5 ) { azNT = mix( azNT, texture2D( azNrmV, azP * azTexV.yz ), azVert ); azRM = mix( azRM, azTexV.w, azVert ); }
+        float azR = azNT.b * azRM;
         azRough = mix( 1.0, azR, azTex.w );
         azCrev = clamp( ( azR - 1.0 ) * 3.0, 0.0, 1.0 );
       }
@@ -725,10 +730,41 @@
       vec2 azNN = ( azNT.xy * 2.0 - 1.0 ) * ( azTex.z * azNS );
       normal = normalize( normal + mat3( viewMatrix ) * ( azT * azNN.x + azB * azNN.y ) );
     }`;
-  const makeOBC = u => function (sh) {
+  // Puddles (thin boxes of MAT.puddle): an irregular wet outline cut from the box's own UVs (kept through merging),
+  // a darker soaked rim and, while it rains, animated ripple normals. Separate program (one extra).
+  const PUD_VERT = "vAzUv = uv;";
+  const PUD_MAIN = `
+    vec2 azQ = vAzUv - 0.5;
+    float azEdge = max( abs( azQ.x ), abs( azQ.y ) ) * 2.0;
+    float azRing = length( azQ * 2.0 ) * 0.75 + azEdge * 0.25;
+    float azShape = azRing + ( texture2D( azNoise, vAzPos.xz * 0.21 ).r - 0.5 ) * 0.8 + ( texture2D( azNoise, vAzPos.xz * 0.9 ).g - 0.5 ) * 0.22;
+    // big wet areas (metres per UV from screen derivatives) break up into separate puddles over wet stone
+    float azSz = ( length( dFdx( vAzPos.xz ) ) + length( dFdy( vAzPos.xz ) ) ) / max( length( dFdx( vAzUv ) ) + length( dFdy( vAzUv ) ), 1e-5 );
+    azShape += smoothstep( 3.0, 8.0, azSz ) * ( texture2D( azNoise, vAzPos.xz * 0.07 + 0.3 ).r - 0.4 ) * 2.2;
+    if ( azShape > 0.92 || azEdge > 0.985 ) discard;
+    float azRim = smoothstep( 0.7, 0.92, azShape );
+    diffuseColor.rgb *= 1.0 + azRim * 0.8;`;
+  const PUD_NORMAL = `
+    if ( azGlobal.y > 0.05 ) {
+      vec2 azR1 = texture2D( azNoise, vAzPos.xz * 0.9 + vec2( azGlobal.z * 0.031, azGlobal.z * 0.047 ) ).ba;
+      vec2 azR2 = texture2D( azNoise, vAzPos.xz * 1.7 - vec2( azGlobal.z * 0.043, azGlobal.z * 0.029 ) ).ab;
+      vec2 azRp = ( azR1 + azR2 - 1.0 ) * 0.22 * azGlobal.y;
+      normal = normalize( normal + mat3( viewMatrix ) * vec3( azRp.x, 0.0, azRp.y ) );
+    }`;
+  const makeOBC = (u, puddle) => function (sh) {
+    if (puddle) {
+      makeOBC(u)(sh);
+      sh.vertexShader = "varying vec2 vAzUv;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + PUD_VERT);
+      sh.fragmentShader = "varying vec2 vAzUv;\n" + sh.fragmentShader
+        .replace("#include <color_fragment>", "#include <color_fragment>\n" + PUD_MAIN)
+        .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + PUD_NORMAL)
+        .replace("roughnessFactor = mix( roughnessFactor, 0.035, azPud );", "roughnessFactor = mix( 0.035, 0.3, azRim );");
+      return;
+    }
     sh.uniforms.azNoise = NOISE_U; sh.uniforms.azGlobal = DET.glob; sh.uniforms.azWin = DET.win;
     sh.uniforms.azMat = u.azMat; sh.uniforms.azMat2 = u.azMat2; sh.uniforms.azMat3 = u.azMat3;
     sh.uniforms.azTex = u.azTex; sh.uniforms.azTexS = u.azTexS; sh.uniforms.azTexM = u.azTexM; sh.uniforms.azAlb = u.azAlb; sh.uniforms.azNrm = u.azNrm;
+    sh.uniforms.azTexV = u.azTexV; sh.uniforms.azTexMV = u.azTexMV; sh.uniforms.azAlbV = u.azAlbV; sh.uniforms.azNrmV = u.azNrmV;
     sh.vertexShader = "varying vec3 vAzPos;\nvarying vec3 vAzN;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + DET_VERT);
     sh.fragmentShader = DET_PARS + sh.fragmentShader
       .replace("#include <color_fragment>", "#include <color_fragment>\n" + DET_MAIN)
@@ -762,9 +798,9 @@
     wallpaper: [10, 0, 0, 0, 1.5, 0, 0.3, 0, 0.1, 0, 0, 0],
   };
   ["red", "gold", "teal", "navy", "ochre", "olive", "burgundy", "grey", "white", "paper"].forEach(k => { FAMS[k] = [9, 0, 0, 0, 2.2, 0, 0.14, 0, 0.2, 0, 0, 0]; });
-  // material key -> [texture set, albedo strength, normal strength, roughness strength, tile scale]
+  // material key -> [texture set, albedo strength, normal strength, roughness strength, tile scale, wall set (optional)]
   const MAT_TEX = {
-    ground: ["dirt", 1, 1, 1], stone: ["flagstone", 1, 1, 1], stoneWet: ["cobble", 1, 1.1, 1], plaster: ["plaster", 1, 1, 1],
+    ground: ["dirt", 1, 1, 1], stone: ["flagstone", 1, 1, 1], stoneWet: ["cobble", 1, 0.75, 1, 1, "flagstone"], plaster: ["plaster", 1, 1, 1],
     plasterCold: ["plaster", 0.9, 1, 1], brick: ["brick", 1, 1, 1], wood: ["planks", 1, 1, 1], woodDark: ["timber", 1, 1, 1],
     roof: ["roof", 1, 1, 1], concrete: ["concrete", 1, 1, 1], ruin: ["concrete", 1, 1.3, 1, 1.5], tile: ["tiles", 1, 0.9, 1],
     iron: ["metal", 1, 0.8, 1], rail: ["metal", 0.6, 0.5, 1], brass: ["metal", 0.55, 0.5, 0.8], copper: ["metal", 0.8, 0.7, 1],
@@ -781,13 +817,70 @@
       azTexM: { value: new THREE.Vector3().fromArray(set ? info.mean.map(v => 1 / v) : [1, 1, 1]) },
       azAlb: set ? set.alb : { value: WHITE }, azNrm: set ? set.nrm : { value: FLAT },
     };
-    if (set) { const on = () => { u.azTex.value.x = 1; }; if (set.ready) on(); else set.onReady.push(on); }
+    const vInfo = tx && tx[5] && R.TEXTURES[tx[5]], vSet = vInfo ? texSet(tx[5]) : null;
+    Object.assign(u, {
+      azTexV: { value: new THREE.Vector4(0, vSet ? 1 / (vInfo.tile[0] * sc) : 1, vSet ? 1 / (vInfo.tile[1] * sc) : 1, vSet ? 1 / vInfo.rough : 1) },
+      azTexMV: { value: new THREE.Vector3().fromArray(vSet ? vInfo.mean.map(v => 1 / v) : [1, 1, 1]) },
+      azAlbV: vSet ? vSet.alb : { value: WHITE }, azNrmV: vSet ? vSet.nrm : { value: FLAT },
+    });
+    // a material turns its textures on once every set it uses has loaded
+    const sets = [set, vSet].filter(Boolean);
+    const check = () => { if (set && sets.every(x => x.ready)) { u.azTex.value.x = 1; u.azTexV.value.x = vSet ? 1 : 0; } };
+    sets.forEach(x => { if (!x.ready) x.onReady.push(check); });
+    check();
     mat.azU = u;
     mat.extensions = { derivatives: true };
-    mat.onBeforeCompile = makeOBC(u);
+    const pud = mat.userData.azKey === "puddle";
+    mat.onBeforeCompile = makeOBC(u, pud);
+    if (pud) { mat.userData.keepUV = true; mat.customProgramCacheKey = () => "azPuddle"; }
     return mat;
   };
   Object.keys(FAMS).forEach(k => { MAT[k].userData.azKey = k; detail(MAT[k], FAMS[k]); });
+  // Open water (flooded floors, canals): world-space scrolling wave normals, deep tint and a fresnel opacity so it
+  // reads as a surface from above and as a mirror at grazing angles. Water only; one small extra program.
+  MAT.water.onBeforeCompile = sh => {
+    sh.uniforms.azNoise = NOISE_U; sh.uniforms.azGlobal = DET.glob;
+    sh.vertexShader = "varying vec3 vAzPos;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvAzPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+    sh.fragmentShader = "uniform sampler2D azNoise; uniform vec4 azGlobal; varying vec3 vAzPos;\n" + sh.fragmentShader
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+        float azT = azGlobal.z;
+        vec2 azW1 = texture2D( azNoise, vAzPos.xz * 0.11 + vec2( azT * 0.013, azT * 0.021 ) ).rg;
+        vec2 azW2 = texture2D( azNoise, vAzPos.xz * 0.37 - vec2( azT * 0.031, azT * 0.017 ) ).gb;
+        vec2 azW3 = texture2D( azNoise, vAzPos.xz * 1.3 + vec2( azT * 0.05, -azT * 0.04 ) ).ba;
+        vec2 azWv = ( azW1 - 0.5 ) * 0.5 + ( azW2 - 0.5 ) * 0.35 + ( azW3 - 0.5 ) * ( 0.15 + 0.35 * azGlobal.y );
+        normal = normalize( normal + mat3( viewMatrix ) * vec3( azWv.x, 0.0, azWv.y ) );
+        float azFr = pow( 1.0 - clamp( dot( normal, normalize( vViewPosition ) ), 0.0, 1.0 ), 3.0 );`)
+      .replace("gl_FragColor = vec4( outgoingLight, diffuseColor.a );", "diffuseColor.a = mix( diffuseColor.a, 0.98, azFr );\ngl_FragColor = vec4( outgoingLight, diffuseColor.a );");
+  };
+  MAT.water.customProgramCacheKey = () => "azWater";
+  // Windows (lit, cold-lit and dark glass boxes): painted frame + glazing bars from the box UVs (kept through merging),
+  // and behind lit glass a little room: ceiling-lit gradient, furniture shadow, curtains, per-window brightness/tint,
+  // a few rooms dark. One shared program for the three window materials.
+  const WIN_MAIN = `
+    vec2 azQ = vAzUv;
+    float azFr = max( max( step( azQ.x, 0.075 ), step( 0.925, azQ.x ) ), max( step( azQ.y, 0.06 ), step( 0.94, azQ.y ) ) );
+    float azBar = max( 1.0 - smoothstep( 0.014, 0.024, abs( azQ.x - 0.5 ) ), 1.0 - smoothstep( 0.012, 0.02, abs( azQ.y - 0.63 ) ) );
+    azFrame = max( azFr, azBar * 0.95 );
+    vec3 azWN = normalize( vAzN ); vec3 azWA = abs( azWN );
+    vec3 azWT = azWA.x > azWA.z ? vec3( 0.0, 0.0, 1.0 ) : vec3( 1.0, 0.0, 0.0 );
+    vec3 azWC = floor( ( vAzPos - azWT * ( azQ.x - 0.5 ) * 1.1 - vec3( 0.0, ( azQ.y - 0.5 ) * 1.4, 0.0 ) ) * 0.8 + 0.5 );
+    float azH1 = azHash( azWC.xz + azWC.y * 17.17 ), azH2 = azHash( azWC.zy * 1.7 + azWC.x * 3.1 ), azH3 = azHash( azWC.xy * 0.37 + 9.2 );
+    float azCL = 0.08 + 0.32 * azH2, azCR = 0.92 - 0.32 * azH3;
+    float azCurt = max( smoothstep( azCL, azCL - 0.05, azQ.x ), smoothstep( azCR, azCR + 0.05, azQ.x ) ) * step( 0.2, azH1 );
+    vec3 azCC = mix( vec3( 1.0, 0.55, 0.3 ), vec3( 0.95, 0.85, 0.6 ), azH3 ) * ( 0.35 + 0.25 * sin( azQ.x * 90.0 ) * 0.2 );
+    azRoom = mix( vec3( 1.0 ), azCC, azCurt ) * ( 0.55 + 0.6 * azQ.y ) * mix( 0.35, 1.0, smoothstep( 0.12, 0.42, azQ.y + 0.12 * azH2 ) );
+    azRoom *= ( 0.35 + 0.95 * azH1 ) * ( azH2 < 0.1 ? 0.08 : 1.0 ) * mix( vec3( 1.0 ), vec3( 1.1, 0.9, 0.75 ), azH3 * 0.5 );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.045, 0.038, 0.032 ), azFrame );`;
+  const winOBC = sh => {
+    sh.vertexShader = "varying vec2 vAzUv;\nvarying vec3 vAzPos;\nvarying vec3 vAzN;\n" + sh.vertexShader.replace("#include <worldpos_vertex>",
+      "#include <worldpos_vertex>\nvAzUv = uv; vAzPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz; vAzN = mat3( modelMatrix ) * objectNormal;");
+    sh.fragmentShader = "varying vec2 vAzUv;\nvarying vec3 vAzPos;\nvarying vec3 vAzN;\n" + HASH + sh.fragmentShader
+      .replace("#include <color_fragment>", "#include <color_fragment>\nfloat azFrame = 0.0; vec3 azRoom = vec3( 1.0 );\n" + WIN_MAIN)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.65, azFrame );")
+      .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor *= 1.0 - azFrame;")
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= azRoom * ( 1.0 - azFrame );");
+  };
+  ["window", "windowCold", "windowDark"].forEach(k => { MAT[k].onBeforeCompile = winOBC; MAT[k].customProgramCacheKey = () => "azWindow"; MAT[k].userData.keepUV = true; });
   // Distant towers: same family as their base material + procedural lit-window grid (no extra geometry).
   const TOWERS = {};
   R.towerMat = key => {
@@ -898,7 +991,7 @@
       g2.font = "600 " + fs + "px sans-serif"; g2.fillStyle = color; g2.textAlign = "center"; g2.textBaseline = "middle";
       lines.forEach((l, i) => g2.fillText(l, cv.width / 2, pad + fs * 0.6 + i * fs * 1.2));
       tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 2;
-      tex.userData = { aspect: cv.width / cv.height };
+      tex.userData = { aspect: cv.width / cv.height, text };
       labelCache[key] = tex;
     }
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: !bg, depthWrite: !!bg, side: THREE.DoubleSide, fog: true });
@@ -969,7 +1062,7 @@
       if (!buckets.has(key)) buckets.set(key, { mat: o.material, geos: [], fx });
       const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
       const keep = {};
-      (fx ? ["position", "normal", "uv"] : ["position", "normal"]).forEach(a => { if (g.attributes[a]) keep[a] = g.attributes[a]; });
+      (fx || o.material.userData.keepUV ? ["position", "normal", "uv"] : ["position", "normal"]).forEach(a => { if (g.attributes[a]) keep[a] = g.attributes[a]; });
       const ng = new THREE.BufferGeometry();
       for (const a in keep) ng.setAttribute(a, keep[a]);
       ng.applyMatrix4(o.matrixWorld);

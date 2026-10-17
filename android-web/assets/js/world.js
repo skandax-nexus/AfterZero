@@ -147,7 +147,7 @@
     L.building = (g, x, z, w, h, d, wallMat = "plaster", winMat = "window", seed = 1, sign = null, signColor = "#ffd28a") => {
       g = g0(g);
       L.box(g, w, h, d, wallMat, x, h / 2, z);
-      L.box(g, w + 0.5, 0.4, d + 0.5, "woodDark", x, h + 0.2, z, { solid: false });
+      L.box(g, w + 0.5, 0.4, d + 0.5, "roof", x, h + 0.2, z, { solid: false }); // slate-capped cornice
       // facade articulation: plinth, string courses, sills + lintels, some unlit (reflective) windows
       const trim = wallMat === "stoneWet" ? "stoneWet" : wallMat === "plasterCold" || wallMat === "concrete" ? "concrete" : "stone";
       L.box(g, w + 0.14, 0.7, d + 0.14, trim, x, 0.35, z, { solid: false });
@@ -188,6 +188,18 @@
         const by = m.position.y, ph = Math.random() * 6, sp = 0.2 + Math.random() * 0.5;
         L.update((dt, t) => { m.position.y = by + Math.sin(t * sp + ph) * 0.5; m.rotation.x += dt * sp * 0.3; m.rotation.y += dt * sp * 0.2; });
       }
+    };
+    /** Illuminated tower clock dial on a wall whose face is at z = zf, facing -z: brass bezel, opal dial, hour marks,
+     *  hands at five to twelve. Replaces the old scan-lined hologram disc (read as a striped ball from the street). */
+    L.clockFace = (g, x, y, zf, r) => {
+      g = g0(g);
+      // seen from -z the viewer's right is -x, so clockwise angles run toward -x
+      const rim = L.mesh(g, "cyl", "brass", x, y, zf - 0.08, r * 2.16, 0.16, r * 2.16); rim.rotation.x = Math.PI / 2;
+      const dial = L.mesh(g, "cyl", "warm", x, y, zf - 0.12, r * 2, 0.1, r * 2); dial.rotation.x = Math.PI / 2; dial.castShadow = false;
+      const part = (a, dist, w, h, dz) => { const m = L.mesh(g, "box", "iron", x - Math.sin(a) * dist, y + Math.cos(a) * dist, zf - dz, w, h, 0.03); m.rotation.z = a; m.castShadow = false; };
+      for (let i = 0; i < 12; i++) part((i / 12) * Math.PI * 2, r * 0.84, r * (i % 3 ? 0.05 : 0.09), r * 0.2, 0.19);
+      part(-Math.PI / 6, r * 0.36, r * 0.055, r * 0.86, 0.21); // minute hand: five to ...
+      part(-Math.PI / 72, r * 0.24, r * 0.085, r * 0.56, 0.22); // hour hand: ... twelve
     };
     L.bunting = (g, x1, x2, z, h = 7) => {
       g = g0(g);
