@@ -225,7 +225,7 @@
   window.addEventListener("load", async () => {
     R.init(document.getElementById("view"));
     const boot = document.getElementById("boot"); if (boot) boot.textContent = "AFTERZERO  ·  LOADING VEYRA";
-    await AZ.humans.load();
+    await Promise.all([AZ.humans.load(), AZ.props ? AZ.props.load() : null]);
     UI.build();
     addEventListener("resize", () => R.resize());
     document.addEventListener("visibilitychange", () => { if (document.hidden) window.azPause(); });
