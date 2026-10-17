@@ -36,3 +36,4 @@ android-web/tools/*.jar
 android-web/tools/node_modules/
 android-web/build/
 android-web/dist/
+/*.apk
