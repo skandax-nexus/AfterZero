@@ -211,7 +211,7 @@
       await AZ.test.wait(opts.wait || 300);
       return it.prompt;
     },
-    async pick(i) { await AZ.test.wait(200); const b = document.querySelectorAll("#pChoice.show .opt")[i]; if (!b) throw new Error("No choice panel/option " + i); b.click(); await AZ.test.wait(200); },
+    async pick(i) { let b = null; for (let k = 0; k < 60 && !b; k++) { await AZ.test.wait(200); b = document.querySelectorAll("#pChoice.show .opt")[i]; if (!b) UI.skipLine(); } if (!b) throw new Error("No choice panel/option " + i); b.click(); await AZ.test.wait(200); },
     closeDoc() { const b = document.querySelector("#pDoc.show .btn"); if (b) b.click(); },
     skipTalk() { for (let i = 0; i < 40; i++) UI.skipLine(); },
     shift(s) { W.allowed |= 1 << s; G.shift(s); },

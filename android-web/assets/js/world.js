@@ -203,9 +203,10 @@
     L.person = (g, x, z, coat = "navy", yaw = 0, scale = 1, opts = {}) => {
       if (!AZ.humans.ready) return L.toyPerson(g, x, z, coat, yaw, scale, opts);
       g = g0(g);
+      const kind = opts.kind || AZ.humans.kindFor(opts.name, ++personCount, scale);
+      if (AZ.humans.isChild(kind) && scale < 0.85) scale = 1;   // child models are already child-sized
       const grp = new THREE.Group(); grp.position.set(x, opts.y || 0, z); grp.rotation.y = yaw; grp.scale.setScalar(scale);
       grp.userData.dynamic = true; grp.userData.noEcho = true;
-      const kind = opts.kind || AZ.humans.kindFor(opts.name, ++personCount);
       const human = AZ.humans.make(kind, { coat: typeof coat === "string" ? coat : null, seed: opts.seed !== undefined ? opts.seed : personCount * 7919 + (opts.name ? opts.name.length * 31 : 0) });
       grp.add(human.root);
       // pose handles kept for older level scripts (now driven by the skeleton)
@@ -717,7 +718,8 @@
   const camV = { pivot: new THREE.Vector3(), want: new THREE.Vector3(), fwd: new THREE.Vector3() };
   function ensureAvatar() {
     if (P.avatar || !AZ.humans.ready) return;
-    P.avatar = AZ.humans.make(AZ.settings.arin === "m" ? "m" : "arin", { seed: 4, coat: AZ.settings.arin === "m" ? "teal" : null });
+    const coat = AZ.settings.arin === "crimson" || AZ.settings.arin === "charcoal" ? AZ.settings.arin : null;
+    P.avatar = AZ.humans.make("arin", { seed: 4, coat, recolor: !!coat });
     P.avatar.root.traverse(o => { if (o.isMesh) o.userData.player = true; });
     P.avatarGroup = new THREE.Group(); P.avatarGroup.add(P.avatar.root); R.scene.add(P.avatarGroup);
     // soft fill from the camera side so Arin reads against night scenes (like a shoulder lantern)

@@ -27,7 +27,7 @@
     // Ledge (climax checkpoint), then the FUTURE beam into the chamber.
     T.goto(10.3, 13, 6.5); await T.wait(600);
     T.shift(2); await T.wait(800);
-    T.goto(-7.5, 13, 7.5); await T.wait(800);
+    T.goto(-7.5, 13, 7.5); await until(() => AZ.get("L02.beamCrossed"), 10000);
     if (!AZ.get("L02.beamCrossed")) return fail("beam");
     await T.use("Draw Calder's bolt"); T.skipTalk();
     if (!AZ.get("L02.calderBoltDrawn")) return fail("bolt");

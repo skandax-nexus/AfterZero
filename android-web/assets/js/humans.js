@@ -1,109 +1,108 @@
-/* AFTERZERO — human characters: skinned glTF models, retargeted animation clips, per-instance variation.
-   Models (assets/models): civilian_f / civilian_m (townsfolk), keeper (Keepers and pursuers), anims (shared clip library). */
+/* AFTERZERO — the cast: our own characters (built by tools/characters/build_characters.py), skinned and animated.
+   models/cast.glb holds every character (one root per character id); models/anims.glb holds the shared rig + clips.
+   All rigs share bone names and rest orientations, so clips are reused by renaming tracks (hips height rescaled). */
 (function () {
   "use strict";
   const AZ = window.AZ;
-  const H = (AZ.humans = { ready: false, list: [] });
-  const FILES = { f: "models/civilian_f.glb", m: "models/civilian_m.glb", keeper: "models/keeper.glb", arin: "models/arin.glb", anims: "models/anims.glb" };
-  // shared clip library name -> our action name
-  const LIB = { idle: "idle", walk: "walk", run: "run", sneak_pose: "crouch", agree: "nod", headShake: "talk", sad_pose: "sad" };
-  const ADULT = 1.76;
-  const T = {};
-  const key = n => n.replace(/^mixamorig/, "");
-  let libRoot = null;
+  const H = (AZ.humans = { ready: false, ids: [] });
+  const T = {};          // id -> { root, clips, height, hipsRest, townsfolk }
+  const key = n => n.replace(/_\d+$/, "");
+  let lib = null;        // { clips, hipsRest }
 
   // ---------------- loading ----------------
   H.load = async () => {
     if (H.ready || H.loading) return H.loading;
     const loader = new THREE.GLTFLoader();
+    if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
     const get = f => new Promise((ok, bad) => loader.load(f, ok, null, bad));
     H.loading = (async () => {
       try {
-        const [f, m, keeper, arin, anims] = await Promise.all([FILES.f, FILES.m, FILES.keeper, FILES.arin, FILES.anims].map(get));
-        const lib = anims.animations.filter(a => LIB[a.name]);
-        libRoot = anims.scene;
-        prepare("f", f, lib, {});
-        prepare("m", m, lib, {});
-        prepare("arin", arin, lib, {});
-        prepare("keeper", keeper, lib, { native: { Idle: "idle", Walk: "walk", Run: "run" } });
-        H.ready = true;
-      } catch (e) { console.warn("Human models unavailable, using stylised figures.", e && e.message); }
+        if (window.MeshoptDecoder && MeshoptDecoder.ready) await MeshoptDecoder.ready;
+        const [cast, anims] = await Promise.all([get("models/cast.glb"), get("models/anims.glb")]);
+        let hips = null;
+        anims.scene.traverse(o => { if (!hips && key(o.name) === "hips") hips = o; });
+        lib = { clips: anims.animations, hipsRest: hips.position.clone() };
+        cast.scene.children.slice().forEach(root => {
+          let skinned = null, hipsB = null, top = 0;
+          root.traverse(o => {
+            if (o.isSkinnedMesh) skinned = o;
+            if (o.isBone && key(o.name) === "hips") hipsB = o;
+            if (o.isMesh) {
+              o.castShadow = o.receiveShadow = true; o.frustumCulled = false;
+              [].concat(o.material).forEach(m => { const t = m.userData.tint; if (t) m.color.setRGB(t[0], t[1], t[2]); m.envMapIntensity = 0.7; });
+            }
+          });
+          if (!skinned || !hipsB) return;
+          root.updateMatrixWorld(true);
+          root.traverse(o => { if (o.isBone) top = Math.max(top, o.getWorldPosition(new THREE.Vector3()).y); });
+          T[root.name] = { root, height: top, hipsRest: hipsB.position.clone(), clips: null, townsfolk: /^town_/.test(root.name) };
+          H.ids.push(root.name);
+        });
+        H.ready = H.ids.length > 0;
+      } catch (e) { console.warn("Cast unavailable, using stylised figures.", e && e.message); }
     })();
     return H.loading;
   };
 
-  function prepare(kind, gltf, lib, opts) {
-    const scene = gltf.scene;
-    scene.updateMatrixWorld(true);
-    let top = 0;
-    scene.traverse(o => { if (o.isBone) { const y = o.getWorldPosition(new THREE.Vector3()).y; if (/HeadTop_End$/.test(key(o.name))) top = Math.max(top, y); else if (!top && /Head$/.test(key(o.name))) top = y * 1.08; } });
-    if (!top) top = ADULT;
-    const clips = {};
-    const native = opts.native || {};
-    gltf.animations.forEach(a => { if (native[a.name]) clips[native[a.name]] = a; });
-    lib.forEach(a => { const n = LIB[a.name]; if (!clips[n]) clips[n] = retarget(libRoot, a, scene); });
-    scene.traverse(o => {
-      if (!o.isMesh) return;
-      o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
-      if (o.material) { o.material.envMapIntensity = 0.6; if (o.material.metalness > 0.5) o.material.metalness = 0.5; }
+  /** Shared clips renamed onto a template's bones; the hips track is re-based to the template's own height. */
+  function clipsFor(t) {
+    if (t.clips) return t.clips;
+    const names = {};
+    t.root.traverse(o => { if (o.isBone) names[key(o.name)] = o.name; });
+    const s = t.hipsRest.y / lib.hipsRest.y;
+    t.clips = {};
+    lib.clips.forEach(c => {
+      const tracks = [];
+      c.tracks.forEach(tr => {
+        const dot = tr.name.lastIndexOf("."), n = tr.name.slice(0, dot), prop = tr.name.slice(dot + 1);
+        const bn = names[key(n)];
+        if (!bn) return;
+        const nt = tr.clone();
+        nt.name = bn + "." + prop;
+        if (prop === "position") {
+          const v = nt.values, r0 = lib.hipsRest, r1 = t.hipsRest;
+          for (let i = 0; i < v.length; i += 3) { v[i] = r1.x + (v[i] - r0.x) * s; v[i + 1] = r1.y + (v[i + 1] - r0.y) * s; v[i + 2] = r1.z + (v[i + 2] - r0.z) * s; }
+        }
+        tracks.push(nt);
+      });
+      t.clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
     });
-    T[kind] = { scene, clips, scale: ADULT / top };
+    return t.clips;
   }
 
-  /** World-space retarget: bakes a clip from the shared skeleton onto another skeleton (bone names match without the mixamorig prefix). */
-  function retarget(srcRoot, clip, dstRoot, fps = 30) {
-    const sb = {}, db = [];
-    srcRoot.traverse(b => { if (b.name && !b.isMesh) sb[key(b.name)] = b; });
-    dstRoot.traverse(b => { if (b.isBone && sb[key(b.name)]) db.push(b); });
-    srcRoot.updateMatrixWorld(true); dstRoot.updateMatrixWorld(true);
-    const wq = o => o.getWorldQuaternion(new THREE.Quaternion());
-    const restS = {}, restD = new Map(), restLocal = new Map();
-    for (const k in sb) restS[k] = wq(sb[k]).invert();
-    db.forEach(b => { restD.set(b, wq(b)); restLocal.set(b, b.quaternion.clone()); });
-    const sHips = sb.Hips, dHips = db.find(b => key(b.name) === "Hips");
-    if (!sHips || !dHips) return clip;
-    const sHip0 = sHips.getWorldPosition(new THREE.Vector3()), dHip0 = dHips.getWorldPosition(new THREE.Vector3());
-    const ratio = dHip0.y / Math.max(1e-3, sHip0.y);
-    const mixer = new THREE.AnimationMixer(srcRoot);
-    mixer.clipAction(clip).play();
-    const n = Math.max(2, Math.round(clip.duration * fps) + 1), times = new Float32Array(n);
-    const qv = new Map(db.map(b => [b, new Float32Array(n * 4)])), pv = new Float32Array(n * 3);
-    const W = new THREE.Quaternion(), PI = new THREE.Quaternion(), v = new THREE.Vector3(), wp = new THREE.Vector3();
-    for (let i = 0; i < n; i++) {
-      const t = Math.min(clip.duration, i / fps); times[i] = t;
-      mixer.setTime(t); srcRoot.updateMatrixWorld(true);
-      for (const b of db) {
-        const k = key(b.name);
-        W.copy(wq(sb[k])).multiply(restS[k]).multiply(restD.get(b));
-        b.parent.getWorldQuaternion(PI).invert();
-        b.quaternion.copy(PI.multiply(W));
-        b.updateMatrixWorld(true);
-        b.quaternion.toArray(qv.get(b), i * 4);
-      }
-      sHips.getWorldPosition(v);
-      wp.copy(dHip0); wp.y += (v.y - sHip0.y) * ratio; dHips.parent.worldToLocal(wp); wp.toArray(pv, i * 3);
-    }
-    mixer.stopAllAction(); mixer.uncacheRoot(srcRoot);
-    db.forEach(b => b.quaternion.copy(restLocal.get(b)));
-    dstRoot.updateMatrixWorld(true);
-    const tracks = db.map(b => new THREE.QuaternionKeyframeTrack(b.name + ".quaternion", times, qv.get(b)));
-    tracks.push(new THREE.VectorKeyframeTrack(dHips.name + ".position", times, pv));
-    return new THREE.AnimationClip(clip.name, clip.duration, tracks);
-  }
-
-  // ---------------- variation ----------------
-  const COAT = { navy: 0x2a3a66, ochre: 0xb07a30, olive: 0x5a6a34, burgundy: 0x7a2432, grey: 0x707078, white: 0xe0ded4, teal: 0x2a8484, red: 0xb03028, obsidian: 0x26262e, brass: 0xb08840 };
-  const SKIN = [1, 0.92, 0.8, 0.66, 0.52, 0.42];
-  const matCache = new Map();
-  function variantMat(src, id, fn) {
-    const k = src.uuid + "|" + id;
-    let m = matCache.get(k);
-    if (!m) { m = src.clone(); fn(m); matCache.set(k, m); }
-    return m;
-  }
+  // ---------------- who is who ----------------
+  const NAMED = [
+    [/^arin/i, "arin"], [/pell/i, "pell"], [/lise/i, "lise"], [/mirela/i, "mirela"], [/hale dovan/i, "hale"], [/vossel/i, "vossel"],
+    [/calder/i, "calder"], [/ondine/i, "ondine"], [/aurel|founder/i, "aurel"], [/odile/i, "odile"], [/ilse/i, "ilse"], [/ignatz/i, "ignatz"],
+    [/maren/i, "maren"], [/edda/i, "edda"], [/witness/i, "witness"], [/wren/i, "wren"], [/warden|\broe\b/i, "roe"], [/conductor|sefa/i, "sefa"],
+    [/nanny|oriel/i, "oriel"], [/lantern|boatman|gate-keeper/i, "keeper_b"], [/keeper/i, "keeper"],
+  ];
+  const FEMALE = /\b(ida|tamsin|ada|vera|mira|clara|nell|hester|agnes|rosa|elin|greta|ines|june|lena|sabine|theda|mother|sister|aunt|widow|woman|lady|mrs|miss|nurse|matron|girl)\b/i;
   const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
-  const FEMALE = /maren|odile|ilse|lise|ondine|mother|witness|nurse|matron|sister|aunt|widow|girl|woman|lady|mrs|miss|tamsin|ada|vera|mira|clara|nell|hester|agnes|rosa|elin|greta|ines|june|lena|sabine|theda|wren/i;
-  H.kindFor = (name, i) => (name ? (FEMALE.test(name) ? "f" : hash(name) % 5 === 0 ? "f" : "m") : (i % 2 ? "f" : "m"));
+  const TOWN_M = ["town_m1", "town_m2", "town_m3", "town_m4", "town_m5", "town_old"], TOWN_F = ["town_f1", "town_f2", "town_f3", "town_f4", "town_f5"];
+  const have = id => (T[id] ? id : null);
+  /** Character id for a name (named cast first; otherwise a townsperson picked from the name or index). */
+  H.kindFor = (name, i = 0, scale = 1) => {
+    if (scale < 0.85) {
+      for (const [re, id] of NAMED) if (name && re.test(name) && T[id] && T[id].height < 1.4) return id;
+      return have("town_kid") || H.ids[0];
+    }
+    if (name) for (const [re, id] of NAMED) if (re.test(name) && T[id]) return id;
+    const h = name ? hash(name) : (i * 2654435761) >>> 0;
+    const fem = name ? FEMALE.test(name) || h % 3 === 0 : i % 2 === 1;
+    const pool = fem ? TOWN_F : TOWN_M;
+    return have(pool[(h >>> 4) % pool.length]) || H.ids[0];
+  };
+  H.isChild = id => !!(T[id] && T[id].height < 1.4);
+
+  // ---------------- per-person colour (townsfolk) ----------------
+  const lin = hex => new THREE.Color("#" + hex).convertSRGBToLinear();
+  const CLOTH_A = ["2f3b57", "6e4a2a", "4b5a33", "6a2430", "54545c", "8a7a5a", "2a6464", "7a3a28", "3a2a4a", "5a6a7a", "9a6a2a", "3c3c34"].map(lin);
+  const CLOTH_B = ["23262b", "33302c", "2a2420", "3a3a44", "4a3a2c", "1e2230", "5a4a3a", "2c2c30"].map(lin);
+  const SKINS = ["f1d3bf", "e6b998", "c98e68", "b07d55", "8a5a3c", "5e3b28"].map(lin);
+  const COAT = { navy: "2f3b57", ochre: "9a6a2a", olive: "4b5a33", burgundy: "6a2430", grey: "54545c", white: "c8c4b8", teal: "2a6464", red: "8a2a24", obsidian: "1a1a20", gold: "a07830", brass: "a07830", crimson: "7a1e22", charcoal: "2a2c30" };
+  const matCache = new Map();
+  const variant = (m, id, fn) => { const k = m.uuid + "|" + id; let v = matCache.get(k); if (!v) { v = m.clone(); fn(v); matCache.set(k, v); } return v; };
 
   // Holographic material that follows the skeleton (same look as R.holo).
   const holoCache = {};
@@ -142,51 +141,47 @@
   };
 
   // ---------------- instances ----------------
-  /** Make a character. opts: {coat, seed, holo, shadow}. Returns {root, play(name, fade, speed), update(dt, dist), setHolo(color)}. */
-  H.make = (kind, opts = {}) => {
-    const t = T[kind] || T.m;
-    const root = THREE.SkeletonUtils.clone(t.scene);
-    root.scale.setScalar(t.scale);
+  /** Make a character. opts: {coat, seed, holo, shadow}. Returns {root, play(name, fade, speed), update(dt, dist, seen), setHolo(color)}. */
+  H.make = (id, opts = {}) => {
+    const t = T[id] || T[H.ids[0]];
+    const root = THREE.SkeletonUtils.clone(t.root);
+    root.position.set(0, 0, 0); root.rotation.set(0, 0, 0);
     const seed = opts.seed !== undefined ? opts.seed : Math.floor(Math.random() * 1e6);
-    const coat = COAT[opts.coat] !== undefined ? COAT[opts.coat] : typeof opts.coat === "number" ? opts.coat : null;
-    const skin = SKIN[seed % SKIN.length];
     const meshes = [];
+    const coat = opts.coat && COAT[opts.coat] ? lin(COAT[opts.coat]) : null;
     root.traverse(o => {
       if (!o.isMesh) return;
       meshes.push(o);
       o.userData.noMerge = true; o.userData.noEcho = true;
-      const n = o.name || "";
-      if (kind === "m") {
-        if (/Outfit_Top/.test(n) && coat !== null) o.material = variantMat(o.material, "top" + coat, m => m.color.setHex(coat).lerp(new THREE.Color(1, 1, 1), 0.35));
-        else if (/Outfit_Bottom/.test(n) && coat !== null) o.material = variantMat(o.material, "bot" + coat, m => m.color.setHex(coat).multiplyScalar(0.55).lerp(new THREE.Color(0.2, 0.2, 0.22), 0.4));
-        else if (/Body|Head/.test(n)) o.material = variantMat(o.material, "skin" + skin, m => m.color.setScalar(skin).lerp(new THREE.Color(0.55, 0.38, 0.28), (1 - skin) * 0.5));
-        else if (n === "Mesh") o.visible = seed % 3 === 0;            // hat
-        else if (/Beard/.test(n)) o.visible = seed % 2 === 0;
-        else if (/Eye|Teeth/.test(n)) { o.castShadow = false; }
-      } else if (kind === "f" || kind === "arin") {
-        const tint = coat !== null ? coat : 0xffffff;
-        o.material = variantMat(o.material, "f" + tint, m => m.color.setRGB(1, 1, 1).lerp(new THREE.Color(tint), coat !== null ? 0.3 : 0));
-      } else if (kind === "keeper") {
-        o.material = variantMat(o.material, "keeper", m => { m.color.setRGB(0.32, 0.31, 0.36); m.roughness = 0.45; m.metalness = 0.35; m.emissive = new THREE.Color(0x1a0c00); });
-      }
+      if (!t.townsfolk && !opts.recolor) return;
+      o.material = [].concat(o.material).map(m => {
+        const slot = m.userData.slot;
+        const a = coat || CLOTH_A[(seed >> 1) % CLOTH_A.length], b = CLOTH_B[(seed >> 3) % CLOTH_B.length], sk = SKINS[(seed >> 5) % SKINS.length];
+        if (slot === "clothA") return variant(m, "a" + a.getHexString(), v => v.color.copy(a));
+        if (slot === "clothB" && t.townsfolk) return variant(m, "b" + b.getHexString(), v => v.color.copy(b));
+        if (slot === "skin" && t.townsfolk) return variant(m, "s" + sk.getHexString(), v => v.color.copy(sk));
+        return m;
+      });
+      if (o.material.length === 1) o.material = o.material[0];
     });
+    const clips = clipsFor(t);
     const mixer = new THREE.AnimationMixer(root);
     const actions = {};
-    for (const n in t.clips) actions[n] = mixer.clipAction(t.clips[n]);
+    for (const n in clips) actions[n] = mixer.clipAction(clips[n]);
     let cur = null, acc = 0, frame = seed % 3;
-    const h = { root, kind, mixer, actions, meshes, current: null };
+    const h = { root, id: t.root.name, mixer, actions, meshes, current: null, height: t.height };
     h.play = (name, fade = 0.25, speed = 1) => {
       const a = actions[name] || actions.idle;
       if (!a) return;
       a.timeScale = speed;
       if (cur === a) return;
       a.reset(); a.enabled = true; a.setEffectiveWeight(1);
-      if (name === "idle" || name === "talk" || name === "nod") a.time = (seed % 97) / 97 * a.getClip().duration;
+      if (name === "idle" || name === "talk" || name === "nod" || name === "sad") a.time = (seed % 97) / 97 * a.getClip().duration;
       a.play();
       if (cur) cur.crossFadeTo(a, fade, false);
       cur = a; h.current = name;
     };
-    /** dist: distance to camera (far characters animate at a lower rate). */
+    /** dist: distance to camera (far characters animate at a lower rate); seen: on screen. */
     h.update = (dt, dist = 0, seen = true) => {
       acc += dt;
       root.visible = seen;
@@ -195,7 +190,7 @@
       if (++frame % every) return;
       mixer.update(acc); acc = 0;
       const sh = dist < 22 && opts.shadow !== false;
-      if (sh !== h._sh) { h._sh = sh; meshes.forEach(m => { m.castShadow = sh && m.visible; }); }
+      if (sh !== h._sh) { h._sh = sh; meshes.forEach(m => { m.castShadow = sh; }); }
     };
     h.setHolo = color => { const m = H.holoMat(color); meshes.forEach(o => { o.material = m; o.castShadow = false; o.receiveShadow = false; }); };
     h.play("idle", 0);

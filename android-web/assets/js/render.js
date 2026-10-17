@@ -463,7 +463,7 @@
     } else { sun.target.position.copy(target); sun.position.copy(target).addScaledVector(sunDir, 80); }
     // image-based lighting
     if (p.ibl && pmrem) {
-      if (frameNo % 30 === 1 || !envRTs[0]) updateEnv();
+      if (frameNo % 15 === 1 || !envRTs[0]) updateEnv();
       const k = w.indexOf(Math.max(...w));
       if (k !== envState && envRTs[k]) { scene.environment = envRTs[k].texture; envState = k; }
     } else if (scene.environment) { scene.environment = null; envState = -1; }
@@ -581,7 +581,7 @@
       azRoughAdd = g * azMat3.y + azRust * 0.5;
       float horiz = smoothstep( 0.65, 0.9, azNW.y );
       azWet = max( azMat.y, azGlobal.y * azMat2.w * mix( 0.3, 1.0, horiz ) );
-      azPud = azMat.y > 0.95 ? horiz : azWet * horiz * smoothstep( 0.6, 0.68, n2.g * 0.8 + n1.r * 0.25 + ( 1.0 - pat.x ) * 0.2 );
+      azPud = azMat.y > 0.95 ? horiz : azWet * horiz * smoothstep( 0.56, 0.63, n2.g * 0.8 + n1.r * 0.25 + ( 1.0 - pat.x ) * 0.2 );
       diffuseColor.rgb *= mix( 1.0, 0.72, azWet ) * ( 1.0 - azPud * 0.3 );
       azNS = 1.0 - azPud * 0.9;
       if ( fam > 10.5 && azVert > 0.5 ) {
@@ -595,7 +595,7 @@
     }`;
   const DET_ROUGH = `
     roughnessFactor = clamp( roughnessFactor * azRough + azRoughAdd, 0.04, 1.0 );
-    roughnessFactor = mix( roughnessFactor, max( roughnessFactor * 0.5, 0.3 ), azWet );
+    roughnessFactor = mix( roughnessFactor, max( roughnessFactor * 0.45, 0.22 ), azWet );
     roughnessFactor = mix( roughnessFactor, 0.035, azPud );`;
   const DET_NORMAL = `
     if ( azGlobal.x > 0.5 && azNS > 0.01 && azMat.z + azMat.w > 0.0 ) {

@@ -52,7 +52,7 @@
   };
 
   // ---------------- settings + difficulty ----------------
-  const defaults = { difficulty: 1, sens: 1, invert: false, quality: -1, left: false, vibe: true, sub: 1, volume: 0.9, cam: 1, arin: "f" };
+  const defaults = { difficulty: 1, sens: 1, invert: false, quality: -1, left: false, vibe: true, sub: 1, volume: 0.9, cam: 1, arin: "teal" };
   AZ.settings = Object.assign({}, defaults, store.get("az1_settings") || {});
   AZ.saveSettings = () => { store.set("az1_settings", AZ.settings); AZ.emit("settings"); };
   AZ.diff = {
