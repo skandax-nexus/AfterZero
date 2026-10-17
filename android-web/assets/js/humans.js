@@ -1,13 +1,13 @@
 /* AFTERZERO — the cast: our own characters (built by tools/characters/build_characters.py), skinned and animated.
    models/cast.glb holds every character (one root per character id); models/anims.glb holds the shared rig + clips.
-   All rigs share bone names and rest orientations, so clips are reused by renaming tracks (hips height rescaled). */
+   Every body has its own proportions, so the shared clips are retargeted onto each skeleton (once, on first use). */
 (function () {
   "use strict";
   const AZ = window.AZ;
   const H = (AZ.humans = { ready: false, ids: [] });
   const T = {};          // id -> { root, clips, height, hipsRest, townsfolk }
   const key = n => n.replace(/_\d+$/, "");
-  let lib = null;        // { clips, hipsRest }
+  let lib = null;        // { clips, root }
 
   // ---------------- loading ----------------
   H.load = async () => {
@@ -27,9 +27,7 @@
       try {
         if (window.MeshoptDecoder && MeshoptDecoder.ready) await MeshoptDecoder.ready;
         const [cast, anims] = await Promise.all([get("models/cast.glb"), get("models/anims.glb")]);
-        let hips = null;
-        anims.scene.traverse(o => { if (!hips && key(o.name) === "hips") hips = o; });
-        lib = { clips: anims.animations, hipsRest: hips.position.clone() };
+        lib = { clips: anims.animations, root: anims.scene };
         cast.scene.children.slice().forEach(root => {
           let skinned = null, hipsB = null, top = 0;
           root.traverse(o => {
@@ -52,30 +50,52 @@
     return H.loading;
   };
 
-  /** Shared clips renamed onto a template's bones; the hips track is re-based to the template's own height. */
+  /** Shared clips baked onto a template's skeleton (world-space retarget: every body has its own proportions/rest pose). */
   function clipsFor(t) {
     if (t.clips) return t.clips;
-    const names = {};
-    t.root.traverse(o => { if (o.isBone) names[key(o.name)] = o.name; });
-    const s = t.hipsRest.y / lib.hipsRest.y;
     t.clips = {};
-    lib.clips.forEach(c => {
-      const tracks = [];
-      c.tracks.forEach(tr => {
-        const dot = tr.name.lastIndexOf("."), n = tr.name.slice(0, dot), prop = tr.name.slice(dot + 1);
-        const bn = names[key(n)];
-        if (!bn) return;
-        const nt = tr.clone();
-        nt.name = bn + "." + prop;
-        if (prop === "position") {
-          const v = nt.values, r0 = lib.hipsRest, r1 = t.hipsRest;
-          for (let i = 0; i < v.length; i += 3) { v[i] = r1.x + (v[i] - r0.x) * s; v[i + 1] = r1.y + (v[i + 1] - r0.y) * s; v[i + 2] = r1.z + (v[i + 2] - r0.z) * s; }
-        }
-        tracks.push(nt);
-      });
-      t.clips[c.name] = new THREE.AnimationClip(c.name, c.duration, tracks);
-    });
+    lib.clips.forEach(c => { t.clips[c.name] = retarget(lib.root, c, t.root); });
     return t.clips;
+  }
+  function retarget(srcRoot, clip, dstRoot, fps = 30) {
+    const sb = {}, db = [];
+    srcRoot.traverse(b => { if (b.name && !b.isMesh) sb[key(b.name)] = b; });
+    dstRoot.traverse(b => { if (b.isBone && sb[key(b.name)]) db.push(b); });
+    srcRoot.updateMatrixWorld(true); dstRoot.updateMatrixWorld(true);
+    const wq = o => o.getWorldQuaternion(new THREE.Quaternion());
+    const restS = {}, restD = new Map(), restLocal = new Map();
+    for (const k in sb) restS[k] = wq(sb[k]).invert();
+    db.forEach(b => { restD.set(b, wq(b)); restLocal.set(b, b.quaternion.clone()); });
+    const sHips = sb.hips, dHips = db.find(b => key(b.name) === "hips");
+    if (!sHips || !dHips) return clip;
+    const sHip0 = sHips.getWorldPosition(new THREE.Vector3()), dHip0 = dHips.getWorldPosition(new THREE.Vector3());
+    const ratio = dHip0.y / Math.max(1e-3, sHip0.y);
+    const mixer = new THREE.AnimationMixer(srcRoot);
+    mixer.clipAction(clip).play();
+    const n = Math.max(2, Math.round(clip.duration * fps) + 1), times = new Float32Array(n);
+    const qv = new Map(db.map(b => [b, new Float32Array(n * 4)])), pv = new Float32Array(n * 3);
+    const W = new THREE.Quaternion(), PI = new THREE.Quaternion(), v = new THREE.Vector3(), wp = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      const tt = Math.min(clip.duration, i / fps); times[i] = tt;
+      mixer.setTime(tt); srcRoot.updateMatrixWorld(true);
+      for (const b of db) {
+        const k = key(b.name);
+        W.copy(wq(sb[k])).multiply(restS[k]).multiply(restD.get(b));
+        b.parent.getWorldQuaternion(PI).invert();
+        b.quaternion.copy(PI.multiply(W));
+        b.updateMatrixWorld(true);
+        b.quaternion.toArray(qv.get(b), i * 4);
+      }
+      sHips.getWorldPosition(v);
+      wp.copy(dHip0); wp.x += (v.x - sHip0.x) * ratio; wp.y += (v.y - sHip0.y) * ratio; wp.z += (v.z - sHip0.z) * ratio;
+      dHips.parent.worldToLocal(wp); wp.toArray(pv, i * 3);
+    }
+    mixer.stopAllAction(); mixer.uncacheRoot(srcRoot);
+    db.forEach(b => b.quaternion.copy(restLocal.get(b)));
+    dstRoot.updateMatrixWorld(true);
+    const tracks = db.map(b => new THREE.QuaternionKeyframeTrack(b.name + ".quaternion", times, qv.get(b)));
+    tracks.push(new THREE.VectorKeyframeTrack(dHips.name + ".position", times, pv));
+    return new THREE.AnimationClip(clip.name, clip.duration, tracks);
   }
 
   // ---------------- who is who ----------------
@@ -87,7 +107,7 @@
   ];
   const FEMALE = /\b(ida|tamsin|ada|vera|mira|clara|nell|hester|agnes|rosa|elin|greta|ines|june|lena|sabine|theda|mother|sister|aunt|widow|woman|lady|mrs|miss|nurse|matron|girl)\b/i;
   const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
-  const TOWN_M = ["town_m1", "town_m2", "town_m3", "town_m4", "town_m5", "town_old"], TOWN_F = ["town_f1", "town_f2", "town_f3", "town_f4", "town_f5"];
+  const TOWN_M = ["town_m1", "town_m2", "town_m3", "town_m4", "town_m5", "town_m6"], TOWN_F = ["town_f1", "town_f2", "town_f3", "town_f4", "town_f5"];
   const have = id => (T[id] ? id : null);
   /** Character id for a name (named cast first; otherwise a townsperson picked from the name or index). */
   H.kindFor = (name, i = 0, scale = 1) => {
