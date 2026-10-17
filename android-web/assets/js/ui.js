@@ -88,7 +88,8 @@
   const queue = [];
   let speaking = false, skipFn = null;
   UI.say = (lines, interrupt = true) => {
-    if (interrupt) { queue.length = 0; if (skipFn) skipFn(true); }
+    // an awaited conversation (dialogue, memory) is never cut off: anything else queues behind it
+    if (interrupt && !queue.some(l => l.done)) { queue.length = 0; if (skipFn) skipFn(true); }
     lines.forEach(l => { if (l) queue.push(typeof l === "string" ? { speaker: "", text: l, dur: 3 } : l); });
     if (!speaking) pump();
     if (lines.length) AZ.sfx("murmur", 0.12, 0.9 + Math.random() * 0.2);

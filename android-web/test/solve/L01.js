@@ -34,7 +34,7 @@
     if (!await until(() => AZ.get("L01.cupSaved"), 40000)) return fail("cup not saved");
     T.skipTalk();
     // 6. The changed plaza, Vossel's scene, the letter, the clockworks.
-    T.goto(0, 0, 53); await T.wait(600); T.skipTalk();
+    T.goto(0, 0, 53); await until(() => AZ.get("L01.streetInspected"), 20000); T.skipTalk();
     T.goto(0, 0, 58); await T.wait(900);
     for (let i = 0; i < 6; i++) { T.skipTalk(); await T.wait(300); }
     await T.pick(1); await T.wait(300);
@@ -43,7 +43,7 @@
     await T.use("Read Arin's letter"); T.closeDoc(); T.skipTalk();
     await T.wait(6000);
     T.goto(0, 0, 63.4); await T.wait(300);
-    T.goto(0, 0, 65.6); await T.wait(2500);
+    T.goto(0, 0, 65.6); await until(() => T.level() === "L02", 20000);
     log("objective now: " + T.objective() + " | level: " + T.level());
     if (T.level() !== "L02") fail("did not reach L02");
     else log("PASSED");
