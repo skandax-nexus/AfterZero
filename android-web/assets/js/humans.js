@@ -14,7 +14,15 @@
     if (H.ready || H.loading) return H.loading;
     const loader = new THREE.GLTFLoader();
     if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
-    const get = f => new Promise((ok, bad) => loader.load(f, ok, null, bad));
+    // models come from files, or (web preview) from base64 embedded by js/models_embedded.js
+    const emb = window.AZ_MODELS || {};
+    const get = f => new Promise((ok, bad) => {
+      const k = f.replace(/^models\/|\.glb$/g, "");
+      if (!emb[k]) return loader.load(f, ok, null, bad);
+      const bin = atob(emb[k]), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      loader.parse(buf.buffer, "", ok, bad);
+    });
     H.loading = (async () => {
       try {
         if (window.MeshoptDecoder && MeshoptDecoder.ready) await MeshoptDecoder.ready;
