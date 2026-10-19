@@ -1121,15 +1121,18 @@ def pose_idle(t, H, sad=0.0):
 
 
 def pose_talk(t, H):
+    """Conversational gestures: arms stay relaxed at the sides; the right hand lifts a little at waist height, the left forearm
+    flexes now and then, small head movement. (Big world-axis swings on the A-pose rig read as hailing / shrugging.)"""
     P, hp = pose_idle(t, H)
     g = math.sin(2 * math.pi * t * 1.0)
     g2 = math.sin(2 * math.pi * t * 0.5 + 0.7)
-    P["upperarm_R"] = qaxis(X, -30 - 18 * max(0, g)) @ qaxis(Y, -30) @ qaxis(Z, -8 * g2)
-    P["forearm_R"] = qaxis(X, -70 - 20 * g) @ qaxis(Z, 15 * g2)
-    P["hand_R"] = qaxis(Y, 20 - 25 * g2)
-    P["upperarm_L"] = qaxis(X, -12 - 14 * max(0, -g2)) @ qaxis(Y, 34)
-    P["forearm_L"] = qaxis(X, -40 - 25 * max(0, -g2))
-    P["head"] = qaxis(X, -3 + 5 * math.sin(2 * math.pi * t * 2)) @ qaxis(Z, 8 * g2)
+    lift = 0.5 + 0.5 * g
+    P["upperarm_R"] = qaxis(X, -6 - 8 * lift) @ qaxis(Y, -34)
+    P["forearm_R"] = qaxis(X, -30 - 22 * lift)
+    P["hand_R"] = qaxis(Y, -6 + 6 * g2)
+    P["upperarm_L"] = qaxis(X, -3 - 4 * max(0, -g2)) @ qaxis(Y, 35)
+    P["forearm_L"] = qaxis(X, -16 - 14 * max(0, -g2))
+    P["head"] = qaxis(X, -2 + 3 * math.sin(2 * math.pi * t * 2)) @ qaxis(Z, 5 * g2)
     return P, hp
 
 

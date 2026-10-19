@@ -405,7 +405,9 @@
       n.reset = () => { p.group.position.copy(start); p.group.rotation.y = startYaw; n.idx = 0; n.wait = 0; };
       L.onReset(n.reset);
       if (o.named !== false) {
-        const tag = L.label(p.group, o.name, 0, 2.15, 0, 0, 0.22, "#cfeeff");
+        // name tag floats just above this person's head (not a fixed height)
+        const tag = L.label(p.group, o.name, 0, p.human ? p.human.height + 0.2 : 2.15, 0, 0, 0.2, "#cfeeff");
+        tag.material.transparent = true; tag.material.depthWrite = false;
         n.tag = tag;
         n.it = L.interact({ at: p.group.position, mesh: p.group, mask: n.mask, prompt: "Talk to " + o.name, radius: 2.8, onUse: () => talk(n) });
         n.it.npc = n;
@@ -886,7 +888,12 @@
         else h.play(act === "talk" ? "talk" : act === "work" || act === "carry" ? "nod" : act === "sit" && h.actions.sit ? "sit" : "idle", 0.4);
         const cd = R.camera.position.distanceTo(grp.position);
         h.update(dt, cd, AZ.humans.seen(grp, cd));
-        if (n.tag) n.tag.rotation.y = Math.atan2(R.camera.position.x - grp.position.x, R.camera.position.z - grp.position.z) - grp.rotation.y;
+        if (n.tag) {
+          // readable at a distance, faded out up close (it would fill the screen) and far away
+          const a = Math.min(1, Math.max(0, (cd - 2.6) / 1.6)) * Math.min(1, Math.max(0, (20 - cd) / 5));
+          n.tag.material.opacity = a; n.tag.visible = a > 0.02;
+          n.tag.rotation.y = Math.atan2(R.camera.position.x - grp.position.x, R.camera.position.z - grp.position.z) - grp.rotation.y;
+        }
         return;
       }
       // procedural animation
