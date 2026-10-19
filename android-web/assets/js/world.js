@@ -883,7 +883,7 @@
         const h = n.p.human, sp = o.speed || 1.3;
         if (walking) h.play(sp > 3 ? "run" : "walk", 0.3, sp > 3 ? sp / 5.6 : sp / 1.55);
         else if (o.named !== false && dP < 3 && AZ.ui.speaking()) h.play("talk", 0.4);
-        else h.play(act === "talk" ? "talk" : act === "work" || act === "carry" ? "nod" : "idle", 0.4);
+        else h.play(act === "talk" ? "talk" : act === "work" || act === "carry" ? "nod" : act === "sit" && h.actions.sit ? "sit" : "idle", 0.4);
         const cd = R.camera.position.distanceTo(grp.position);
         h.update(dt, cd, AZ.humans.seen(grp, cd));
         if (n.tag) n.tag.rotation.y = Math.atan2(R.camera.position.x - grp.position.x, R.camera.position.z - grp.position.z) - grp.rotation.y;

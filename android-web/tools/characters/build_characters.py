@@ -1152,6 +1152,38 @@ def pose_fall(t, H):
     return P, V((0, 0, 0))
 
 
+REST = {}   # reference-rig measurements (filled by bake_clips) for poses that must meet the floor / a seat
+
+
+def pose_sit(t, H):
+    """Seated on a ~0.46 m bench: thighs forward ~86 deg, knees ~86 deg, feet flat on the floor, hands resting on the
+    thighs, slow breathing and a little head life. The hips drop so the ankles keep their rest height (feet on the
+    floor); for the reference body that puts the pelvis ~0.55 m up and the seat contact ~0.46 m."""
+    P = {}
+    br = math.sin(2 * math.pi * t)
+    look = math.sin(2 * math.pi * t * 0.5)
+    th, sh = 86.0, 2.0          # thigh / shin angle forward from hanging straight down
+    P["hips"] = qaxis(X, 0)
+    P["spine"] = qaxis(X, -5 + 0.8 * br)
+    P["chest"] = qaxis(X, 4 - 1.4 * br)
+    P["neck"] = qaxis(X, 5) @ qaxis(Z, 4 * look)
+    P["head"] = qaxis(X, 3 + 1.0 * br) @ qaxis(Z, 6 * math.sin(2 * math.pi * t * 0.5 + 1.0))
+    for k in "LR":
+        spread = side(k) * 6
+        P["thigh_" + k] = qaxis(Z, spread) @ qaxis(X, -th)
+        P["shin_" + k] = qaxis(X, th - sh)
+        P["foot_" + k] = qaxis(X, sh) @ qaxis(Z, -spread * 0.5)
+        P["toe_" + k] = qaxis(X, 0)
+        P["clavicle_" + k] = qaxis(Y, side(k) * (0.8 * br - 2))
+        P["upperarm_" + k] = qaxis(X, -24) @ qaxis(Y, side(k) * 44) @ qaxis(Z, -side(k) * 4)
+        P["forearm_" + k] = qaxis(X, -58 - 1.5 * br) @ qaxis(Z, side(k) * 8)
+        P["hand_" + k] = qaxis(X, -6) @ qaxis(Y, side(k) * 10)
+    # hips height so the ankles stay at their rest height: hip joint = ankle + thigh*cos(th) + shin*cos(sh)
+    hj = REST.get("ankle", 0.085 * H / 1.7) + REST.get("thigh", 0.245 * H) * math.cos(math.radians(th)) + REST.get("shin", 0.25 * H) * math.cos(math.radians(sh))
+    drop = REST.get("hipj", 0.53 * H) - hj
+    return P, V((0, 0.0, -drop + 0.002 * br))
+
+
 CLIPS = [  # name, frames (30 fps), pose fn(t in 0..1)
     ("idle", 120, lambda t, H: pose_idle(t, H)),
     ("walk", 32, lambda t, H: pose_walk(t, H)),
@@ -1161,10 +1193,15 @@ CLIPS = [  # name, frames (30 fps), pose fn(t in 0..1)
     ("nod", 60, lambda t, H: pose_nod(t, H)),
     ("sad", 90, lambda t, H: pose_idle(t, H, sad=1.0)),
     ("fall", 20, lambda t, H: pose_fall(t, H)),
+    ("sit", 120, lambda t, H: pose_sit(t, H)),
 ]
 
 
 def bake_clips(arm, H):
+    b = arm.data.bones
+    if "thigh_L" in b and "shin_L" in b and "foot_L" in b:
+        REST.update(hipj=b["thigh_L"].head_local.z, thigh=b["thigh_L"].length, shin=b["shin_L"].length, ankle=b["foot_L"].head_local.z,
+                    pelvis=b["hips"].head_local.z)
     arm.animation_data_create()
     for name, frames, fn in CLIPS:
         act = bpy.data.actions.new(name)
@@ -1178,12 +1215,14 @@ def bake_clips(arm, H):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-def export(path, objs, animations):
+def export(path, objs, animations, attributes=False):
+    """attributes=True: no vertex colours, but custom '_name' attributes (the realistic cast's shading mask)."""
     for o in bpy.context.view_layer.objects:
         o.select_set(o in objs)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_skins=True,
                               export_animations=animations, export_animation_mode="ACTIONS", export_extras=True,
-                              export_vertex_color="ACTIVE", export_all_vertex_colors=False, export_morph=False,
+                              export_vertex_color="NONE" if attributes else "ACTIVE", export_all_vertex_colors=False,
+                              export_attributes=attributes, export_morph=False,
                               export_force_sampling=True, export_optimize_animation_size=True)
 
 

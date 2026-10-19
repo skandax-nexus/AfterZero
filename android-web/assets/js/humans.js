@@ -4,7 +4,7 @@
 (function () {
   "use strict";
   const AZ = window.AZ;
-  const H = (AZ.humans = { ready: false, ids: [] });
+  const H = (AZ.humans = { ready: false, ids: [], SEAT: 0.46 });   // SEAT: bench height (m) the "sit" clip is authored for
   const T = {};          // id -> { root, clips, height, hipsRest, townsfolk }
   const key = n => n.replace(/_\d+$/, "");
   let lib = null;        // { clips, root }
@@ -35,7 +35,12 @@
             if (o.isBone && key(o.name) === "hips") hipsB = o;
             if (o.isMesh) {
               o.castShadow = o.receiveShadow = true; o.frustumCulled = false;
-              [].concat(o.material).forEach(m => { const t = m.userData.tint; if (t) m.color.setRGB(t[0], t[1], t[2]); m.envMapIntensity = 0.7; });
+              const g = o.geometry, mk = g.attributes._mask || g.attributes._MASK;
+              if (mk) { g.setAttribute("azMask", mk); g.deleteAttribute(g.attributes._mask ? "_mask" : "_MASK"); }
+              [].concat(o.material).forEach(m => {
+                const t = m.userData.tint; if (t) m.color.setRGB(t[0], t[1], t[2]); m.envMapIntensity = 0.7;
+                if (mk && m.userData.slot === "atlas") H.skinShade(m);
+              });
             }
           });
           if (!skinned || !hipsB) return;
@@ -69,7 +74,7 @@
     const sHips = sb.hips, dHips = db.find(b => key(b.name) === "hips");
     if (!sHips || !dHips) return clip;
     const sHip0 = sHips.getWorldPosition(new THREE.Vector3()), dHip0 = dHips.getWorldPosition(new THREE.Vector3());
-    const ratio = dHip0.y / Math.max(1e-3, sHip0.y);
+    const ratio = dHip0.y / Math.max(1e-3, sHip0.y), seated = clip.name === "sit";
     const mixer = new THREE.AnimationMixer(srcRoot);
     mixer.clipAction(clip).play();
     const n = Math.max(2, Math.round(clip.duration * fps) + 1), times = new Float32Array(n);
@@ -88,6 +93,7 @@
       }
       sHips.getWorldPosition(v);
       wp.copy(dHip0); wp.x += (v.x - sHip0.x) * ratio; wp.y += (v.y - sHip0.y) * ratio; wp.z += (v.z - sHip0.z) * ratio;
+      if (seated) wp.y = H.SEAT + (v.y - H.SEAT) * ratio;   // the bench is the same height for everyone (a child's feet dangle)
       dHips.parent.worldToLocal(wp); wp.toArray(pv, i * 3);
     }
     mixer.stopAllAction(); mixer.uncacheRoot(srcRoot);
@@ -130,7 +136,59 @@
   const SKINS = ["f1d3bf", "e6b998", "c98e68", "b07d55", "8a5a3c", "5e3b28"].map(lin);
   const COAT = { navy: "2f3b57", ochre: "9a6a2a", olive: "4b5a33", burgundy: "6a2430", grey: "54545c", white: "c8c4b8", teal: "2a6464", red: "8a2a24", obsidian: "1a1a20", gold: "a07830", brass: "a07830", crimson: "7a1e22", charcoal: "2a2c30" };
   const matCache = new Map();
-  const variant = (m, id, fn) => { const k = m.uuid + "|" + id; let v = matCache.get(k); if (!v) { v = m.clone(); fn(v); matCache.set(k, v); } return v; };
+  const variant = (m, id, fn) => {
+    const k = m.uuid + "|" + id; let v = matCache.get(k);
+    if (!v) { v = m.clone(); if (m.userData.azSkin) { v.userData.azSkin = false; H.skinShade(v); } fn(v); matCache.set(k, v); }
+    return v;
+  };
+
+  // ---------------- skin shading (the cast's single atlas material) ----------------
+  // The builder stores a per-vertex mask (attribute _mask -> azMask): r = skin, g = gloss (eyes, leather, metal), b = hair.
+  // Skin gets wrapped diffuse with a warm terminator (cheap subsurface look) and a soft specular; eyes are glossy; hair is
+  // a little shinier than cloth. A small fill + rim keeps faces readable at night. Low preset: no wrap/rim (one mad less).
+  H.shade = { fill: { value: new THREE.Color(0.045, 0.048, 0.058) }, rim: { value: new THREE.Color(0.07, 0.08, 0.1) } };
+  const lowTier = () => !!(AZ.render && AZ.render.preset && AZ.render.preset() && !AZ.render.preset().detail);
+  let skinLights = null;
+  const skinChunk = () => skinLights || (skinLights = THREE.ShaderChunk.lights_physical_pars_fragment
+    .replace("vec3 irradiance = dotNL * directLight.color;",
+      `vec3 irradiance = dotNL * directLight.color;
+      #ifdef AZ_WRAP
+        float azNL = dot( geometry.normal, directLight.direction );
+        float azW = azSkin * 0.5 + azHair * 0.25;
+        vec3 azIrr = ( vec3( dotNL ) + ( saturate( ( azNL + azW ) / ( 1.0 + azW ) ) - dotNL ) * mix( vec3( 1.0 ), vec3( 1.0, 0.5, 0.36 ), azSkin ) ) * directLight.color;
+      #else
+        vec3 azIrr = irradiance;
+      #endif
+      #ifndef PHYSICALLY_CORRECT_LIGHTS
+        azIrr *= PI;
+      #endif`)
+    .replace("reflectedLight.directDiffuse += ( 1.0 - clearcoatDHR ) * irradiance * BRDF_Diffuse_Lambert( material.diffuseColor );",
+      "reflectedLight.directDiffuse += ( 1.0 - clearcoatDHR ) * azIrr * BRDF_Diffuse_Lambert( material.diffuseColor );"));
+  H.skinShade = m => {
+    if (m.userData.azSkin) return m;
+    m.userData.azSkin = true;
+    m.customProgramCacheKey = () => "azskin" + (lowTier() ? "L" : "H");
+    m.onBeforeCompile = sh => {
+      const low = lowTier();
+      sh.uniforms.azFill = H.shade.fill; sh.uniforms.azRim = H.shade.rim;
+      sh.vertexShader = "attribute vec3 azMask;\nvarying vec3 vAzMask;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvAzMask = azMask;");
+      sh.fragmentShader = (low ? "" : "#define AZ_WRAP\n") + "varying vec3 vAzMask;\nuniform vec3 azFill;\nuniform vec3 azRim;\nfloat azSkin = 0.0;\nfloat azGloss = 0.0;\nfloat azHair = 0.0;\n" + sh.fragmentShader
+        .replace("void main() {", "void main() {\n\tazSkin = vAzMask.r; azGloss = vAzMask.g; azHair = vAzMask.b;")
+        .replace("#include <lights_physical_pars_fragment>", skinChunk())
+        .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n\troughnessFactor = mix( mix( mix( roughnessFactor, 0.5, azSkin ), 0.62, azHair ), 0.07, azGloss );")
+        .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
+        {
+          #ifdef AZ_WRAP
+            float azR = pow( 1.0 - saturate( dot( normal, normalize( vViewPosition ) ) ), 3.0 );
+          #else
+            float azR = 0.0;
+          #endif
+          reflectedLight.indirectDiffuse += material.diffuseColor * ( azFill + azRim * azR ) * ( 1.0 - 0.5 * azGloss );
+        }`);
+    };
+    m.needsUpdate = true;
+    return m;
+  };
 
   // Holographic material that follows the skeleton (same look as R.holo).
   const holoCache = {};
