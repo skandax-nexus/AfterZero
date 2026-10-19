@@ -38,3 +38,6 @@ android-web/build/
 android-web/dist/
 /*.apk
 __pycache__/
+# raw motion-capture downloads (CMU data is not redistributed; only baked clips ship)
+*.bvh
+android-web/tools/characters/mocap/cache/
