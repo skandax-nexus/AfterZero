@@ -301,7 +301,12 @@
     $("pSettings").querySelector("[data-a=back]").onclick = () => show("pSettings", false);
     buildSettings();
   }
-  const show = (id, on) => $(id).classList.toggle("show", on);
+  // full-screen sheets (pause, settings, journal) hide the HUD and touch controls underneath: nothing shows through
+  const SHEETS = ["pPause", "pSettings", "pJournal"];
+  const show = (id, on) => {
+    $(id).classList.toggle("show", on);
+    document.body.classList.toggle("sheet", SHEETS.some(k => $(k) && $(k).classList.contains("show")));
+  };
   let docOpen = false;
   UI.document = (title, text) => {
     const d = $("pDoc");

@@ -25,6 +25,7 @@ button { font-family:inherit; }
 /* ---------------- HUD (above the touch layer; only its buttons take touches) ---------------- */
 #hud { position:fixed; inset:0; pointer-events:none; font-family: "Roboto Mono", ui-monospace, monospace; display:none; z-index:2; }
 body.ingame #hud { display:block; }
+body.sheet #hud, body.sheet #touch { visibility:hidden; }
 #top { position:absolute; left:calc(var(--m) + var(--sl)); right:calc(var(--m) + var(--sr)); top:calc(var(--m) * .8 + var(--st));
   display:grid; grid-template-columns:minmax(0,1fr) clamp(180px,34vw,440px) auto; grid-template-areas:"tl tc tr"; gap:6px var(--gap); align-items:start; }
 #tl { grid-area:tl; display:grid; gap:5px; justify-items:start; min-width:0; }
