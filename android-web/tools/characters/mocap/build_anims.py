@@ -49,7 +49,7 @@ CLIPS = [
     dict(name="run", trial="127_07", range=(5, 145), mode="cycle"),
     dict(name="sprint", trial="143_01", range=(0, 100), mode="cycle"),
     dict(name="crouch", trial="136_09", range=(300, 1100), mode="cycle"),
-    dict(name="talk", trial="18_08", range=(1330, 1740), mode="loop", length=(2.6, 3.3), fade=0.6),
+    dict(name="talk", trial="18_08", range=(1600, 2080), mode="loop", length=(2.6, 3.3), fade=0.6),
     dict(name="nod", trial="18_08", range=(300, 1200), mode="loop", length=(4.0, 6.0), fade=0.8, nods=True),
     dict(name="sad", trial="137_28", range=(3300, 3722), mode="loop", length=(2.3, 2.8), fade=0.5,
          slump={"spine": 7, "chest": 10, "neck": 14, "head": 24, "clavicle_L": 6, "clavicle_R": 6}, slow=1.35),
@@ -335,6 +335,27 @@ def retarget(src, tgt, frames, yaw, pivot):
     return Rw, hm, s
 
 
+def settle_clavicles(tgt, Rw, keep_mean=0.2, keep_motion=0.6, drop=5.0):
+    """CMU shoulder joints sit high: on our rig every take reads as a 20-35 degree shrug (square, raised shoulders).
+    Each clavicle keeps only a little of the take's mean offset from rest (relative to the chest) and most of its motion
+    around that mean, then settles `drop` degrees (relaxed shoulders under hanging arms). Upper arms keep their world
+    rotations, so the arm swing is unchanged."""
+    I = np.array([1.0, 0, 0, 0])
+    up = np.array([0.0, 0, 1.0])
+    for k in "LR":
+        b = tgt.bi["clavicle_" + k]
+        p = tgt.parent[b]
+        Dp = Rw[:, p] @ tgt.R[p].T
+        L = np.transpose(Dp, (0, 2, 1)) @ Rw[:, b] @ tgt.R[b].T        # change relative to the chest (identity at rest)
+        q = q_continuous(m2q(L))
+        mean = nrm(q.mean(0))
+        dyn = m2q(q2m(mean).T[None] @ L)
+        Ln = q2m(slerp(I, mean, keep_mean))[None] @ q2m(slerp(I[None], dyn, keep_motion))
+        Ln = Ln @ axis_angle(np.cross(up, tgt.dir[b]), math.radians(drop))[None]
+        Rw[:, b] = Dp @ Ln @ tgt.R[b]
+    return Rw
+
+
 def hips_head(tgt, Rw, hm):
     b = tgt.bi["hips"]
     D = Rw[:, b] @ tgt.R[b].T
@@ -536,6 +557,7 @@ def build_clip(spec, tgt):
         yaw = np.full(len(frames), -yaw0)
     pivot = hm_src[frames].mean(0)
     Rw, hm, s = retarget(src, tgt, frames, yaw, pivot)
+    Rw = settle_clavicles(tgt, Rw)
     hh = hips_head(tgt, Rw, hm)
     feat, vel = pose_features(tgt, Rw, hh)
 

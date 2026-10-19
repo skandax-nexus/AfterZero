@@ -18,6 +18,10 @@ How a character is made:
   features placed from real landmarks (lid margins from the lash helpers, lip line from the mouth topology).
 - Feet wear a fitted shoe: the convex hull of the real foot, voxel-remeshed, with a stretched sole edge, weighted
   like the skin it covers. Eyes are the MakeHuman cornea shell textured with a painted iris (glossy via the mask).
+- Hands rest relaxed (relax_hands: a finger curl baked into the rest mesh with MakeHuman's finger joints and weights);
+  the deltoid cap is weighted half to the upper arm, so shoulders stay round when the arms hang down.
+- Skirts, coat tails and aprons are cloth tubes: both thighs blend across the front and back panels (the cloth
+  stretches between the legs instead of splitting), the hem rim has its own normals, and they skip decimation.
 - A per-vertex "_mask" attribute (skin, gloss, hair) drives the runtime skin shading in assets/js/humans.js.
 - Decimation protects the face (full density), then the rest of the head, then the body takes the reduction.
 """
@@ -122,12 +126,73 @@ def dense_weights(n):
     W = np.zeros((n, len(BONE_NAMES)))
     for mhb, lst in skel()["w"].items():
         j = BI[our_bone(mhb)]
+        # the deltoid cap (shoulder01) turns half with the arm: on the clavicle alone it squares off as the arm drops
+        j2 = BI["upperarm_" + mhb[-1]] if mhb.startswith("shoulder01.") else j
         for vi, w in lst:
             if vi < n:
-                W[vi, j] += w
+                W[vi, j] += w * (0.5 if j2 != j else 1.0)
+                if j2 != j:
+                    W[vi, j2] += w * 0.5
     s = W.sum(1)
     W[s < 1e-9, BI["hips"]] = 1.0
     return W / W.sum(1, keepdims=True)
+
+
+# relaxed hands: degrees of flexion per phalanx (proximal, middle, distal), thumb first; the metacarpals of the ring
+# and little fingers cup the palm a little. MakeHuman's rest hand is flat with the fingers splayed.
+CURL = {1: (4, 12, 10), 2: (14, 20, 10), 3: (18, 26, 12), 4: (22, 30, 14), 5: (26, 32, 16)}
+CUP = {3: 3.0, 4: 6.0}
+
+
+def relax_hands(P):
+    """Bake a relaxed finger pose into the rest mesh (MakeHuman finger joints / weights, linear blend skinning). Each
+    phalanx flexes about its bone X axis, built like MakeHuman's own bone frames from the bone's rotation plane."""
+    S = skel()
+    bones, planes = S["bones"], S["planes"]
+
+    def axis_x(name):
+        b = bones[name]
+        h, t = jpos(P, b["head"]), jpos(P, b["tail"])
+        p1, p2, p3 = (jpos(P, j) for j in planes[b["rotation_plane"]])
+        n = np.cross(nrm3(p3 - p2), nrm3(p2 - p1))
+        y = nrm3(t - h)
+        z = nrm3(np.cross(n, y))
+        return h, np.cross(y, z)
+
+    def rot(h, ax, deg):
+        a = math.radians(deg)
+        x, y, z = ax
+        c, s, C = math.cos(a), math.sin(a), 1 - math.cos(a)
+        R = np.array([[c + x * x * C, x * y * C - z * s, x * z * C + y * s], [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
+                      [z * x * C - y * s, z * y * C + x * s, c + z * z * C]])
+        M = np.eye(4)
+        M[:3, :3] = R
+        M[:3, 3] = h - R @ h
+        return M
+
+    G = {}
+    for s in "LR":
+        for f in range(1, 6):
+            parent = np.eye(4)
+            if f > 1:
+                mc = f"metacarpal{f - 1}.{s}"
+                parent = rot(*axis_x(mc), CUP.get(f - 1, 0.0)) if CUP.get(f - 1) else np.eye(4)
+                G[mc] = parent
+            for k in range(3):
+                bn = f"finger{f}-{k + 1}.{s}"
+                parent = parent @ rot(*axis_x(bn), CURL[f][k])
+                G[bn] = parent
+    Ph = np.c_[P, np.ones(len(P))]
+    out = P.copy()
+    for bn, M in G.items():
+        for vi, w in S["w"].get(bn, []):
+            if vi < len(P):
+                out[vi] += w * ((M @ Ph[vi])[:3] - P[vi])
+    return out
+
+
+def nrm3(v):
+    return v / max(np.linalg.norm(v), 1e-12)
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -433,7 +498,7 @@ def chain_param(P, pts):
 class Body:
     def __init__(self, c):
         P = mh.sculpt(c["macro"], c.get("details"))
-        self.P = P - np.array([0, P[:, 1].min(), 0])
+        self.P = relax_hands(P - np.array([0, P[:, 1].min(), 0]))
         _, _, self.F = mh.base()
         self.faces = [i for i, f in enumerate(self.F) if f[2] == "body"]
         self.W = dense_weights(len(self.P))
@@ -1169,6 +1234,8 @@ def paint_cells(c, img, mask, res, seed):
             k = 0.8 + 0.12 * np.sin(a * 60 + 2 * vnoise(p3, 3, seed).reshape(a.shape)) + 0.08 * np.sin(a * 151 + 1.3)
         elif name in ("shoe", "sole"):
             k = 0.9 + 0.12 * vnoise(p3, 9, seed).reshape(a.shape)
+        elif name in ("colA", "colB", "acc"):    # skirts, coat tails, aprons: the same mean shade as the painted garments
+            k = 0.84 + 0.07 * vnoise(p3, 6, seed).reshape(a.shape)
         else:
             k = 0.93 + 0.08 * vnoise(p3, 6, seed).reshape(a.shape)
         put(gx, gy, cc[None, None, :] * k[..., None])
@@ -1511,8 +1578,8 @@ def extras(c, B, cov, layers):
             c0, R0 = ring_fit(cloth_pts, top_z, 0.012)
         fl_k = {"coat": 0.3, "robe": 0.42, "jacket": 0.12, "uniform": 0.1}.get(top, 0.4 if bottom == "longskirt" else 0.36)
         prevR = R0
-        for i in range(8):
-            t = i / 7
+        for i in range(12):
+            t = i / 11
             z = top_z + (bot_z - top_z) * t
             ci, Ri = ring_fit(legs, max(z, J["knee_L"].z), 0.02)
             Ri = np.maximum(Ri, prevR * (0.985 if z > hip_z else 1.0)) if i else R0
@@ -1526,16 +1593,14 @@ def extras(c, B, cov, layers):
             rings = [(zh + 0.03, rings[0][1], R0, 0.003), (zh - 0.004, rings[0][1], np.maximum(R0, Rh - 0.003), 0.0),
                      (zh - 0.026, rings[0][1], np.maximum(R0, Rh + 0.004), 0.004)] + [r for r in rings[1:] if r[0] < zh - 0.05]
         o = ring_tube("skirt", rings)
-        if top in ("coat", "jacket") and bottom == "trousers":   # coats / jackets open at the front below the waist
+        if top in ("coat", "jacket") and bottom == "trousers":   # coats / jackets: a front vent, closed at the waist
             bm = bmesh.new()
             bm.from_mesh(o.data)
-            kill = [f for f in bm.faces if f.calc_center_median().y < -0.02 and abs(f.calc_center_median().x) < 0.035 + 0.05 * (top_z - f.calc_center_median().z)]
+            kill = [f for f in bm.faces if f.calc_center_median().y < -0.02 and abs(f.calc_center_median().x) < 0.1 * (top_z - f.calc_center_median().z) - 0.004]
             bmesh.ops.delete(bm, geom=kill, context="FACES")
             bm.to_mesh(o.data)
             bm.free()
-        sol = o.modifiers.new("solid", "SOLIDIFY")
-        sol.thickness = 0.005
-        BC.apply_modifiers(o)
+        cloth_shell(o, 0.005)
         cell = "colA" if top in ("coat", "robe", "dress", "jacket", "uniform") and bottom == "trousers" or top in ("robe", "dress") else "colB"
         piece(o, cell, (0, 0, 0), "xz")
         WSTORE[o.name] = skirt_weights(obj_world_verts(o), J, H, top_z, long=length > 0.4)
@@ -1547,6 +1612,7 @@ def extras(c, B, cov, layers):
             bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().y > rings[0][1][1] - 0.03], context="FACES")
             bm.to_mesh(ap.data)
             bm.free()
+            cloth_shell(ap, 0.003)
             piece(ap, "acc", (0, 0, 0), "xz")
             WSTORE[ap.name] = skirt_weights(obj_world_verts(ap), J, H, top_z, long=length > 0.4)
             out.append(ap)
@@ -1559,6 +1625,7 @@ def extras(c, B, cov, layers):
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().y > c0[1] - 0.03], context="FACES")
         bm.to_mesh(ap.data)
         bm.free()
+        cloth_shell(ap, 0.003)
         piece(ap, "acc", (0, 0, 0), "xz")
         WSTORE[ap.name] = skirt_weights(obj_world_verts(ap), J, H, waist_z, long=False)
         out.append(ap)
@@ -1818,14 +1885,28 @@ def hat_pieces(c, B, layers):
     return out
 
 
+def cloth_shell(o, thickness):
+    """Give a cloth sheet its thickness, with the hem / edge rim on its own normals (smooth normals averaged across the
+    rim turn the whole hem dark)."""
+    sol = o.modifiers.new("solid", "SOLIDIFY")
+    sol.thickness = thickness
+    es = o.modifiers.new("split", "EDGE_SPLIT")
+    es.split_angle = math.radians(55)
+    es.use_edge_sharp = False
+    BC.apply_modifiers(o)
+
+
 def skirt_weights(pts, J, H, top_z, long=False):
-    """Skirts / coat tails: hips at the waist, then the thigh on the same side (fully by the knee, so a striding leg
-    carries its half of the skirt instead of poking through it), with a little shin toward a long hem."""
+    """Skirts / coat tails: hips at the waist, then mostly the thigh on the same side (by the knee, so a striding leg
+    carries its half of the skirt instead of poking through it), with a little shin toward a long hem. The two sides
+    blend over the whole front / back panel, so the cloth stretches between the legs instead of splitting into two
+    rigid boards. An apron takes the same weights as the skirt under it (they move as one)."""
     W = np.zeros((len(pts), len(BONE_NAMES)))
     t = np.clip((top_z - pts[:, 2]) / (0.2 * H), 0, 1)
     back = np.clip((pts[:, 1] - J["pelvis"].y) / 0.08, 0, 1)        # the back panel stays a little more with the hips
-    lw = t ** 0.8 * (1 - 0.25 * back)
-    sx = np.clip(pts[:, 0] / 0.05, -1, 1)
+    lw = t ** 0.8 * (1 - 0.25 * back) * 0.85
+    sx = np.clip(pts[:, 0] / 0.11, -1, 1)
+    sx = np.sin(sx * math.pi / 2)
     kz = J["knee_L"].z
     below = np.clip((kz + 0.02 - pts[:, 2]) / 0.22, 0, 1) * 0.75     # below the knee the hem hangs from the shin
     W[:, BI["hips"]] = 1 - lw
@@ -1930,38 +2011,48 @@ def build(c, tex_dir):
                 taubin(Lx, 10 if key == "hood" else 14)
                 rel = Lx.pos - B.L.eye
                 bump = 0.0
+                hw = np.clip(B.hw[Lx.base] + B.W[Lx.base, BI["neck"]], 0, 1) if key == "hood" else 1.0
                 if key == "scarf" and c.get("hair") == "bun":
                     bump = 0.03 * g2(rel[:, 0] ** 2 + ((rel[:, 1] - 0.07) / 1.0) ** 2 + ((rel[:, 2] + 0.15) / 0.6) ** 2, 0.035)
-                if key == "hood":   # snug at the face opening, loose and a little peaked behind
-                    bump = 0.022 * ss(0.0, 0.07, Lx.cov) + 0.012 * g2(rel[:, 0] ** 2 + ((rel[:, 1] - 0.06) / 1.2) ** 2 + ((rel[:, 2] + 0.12) / 0.8) ** 2, 0.04)
+                if key == "hood":   # snug at the face opening, loose and a little peaked behind; a slim mantle on the shoulders
+                    bump = 0.022 * ss(0.0, 0.07, Lx.cov) * hw + 0.012 * g2(rel[:, 0] ** 2 + ((rel[:, 1] - 0.06) / 1.2) ** 2 + ((rel[:, 2] + 0.12) / 0.8) ** 2, 0.04)
                 offset_layer(Lx, B, off * (0.35 + 0.65 * ss(0.0, 0.02, Lx.cov)) + bump)
                 taubin(Lx, 2)
                 layers[key] = Lx
     parts = [layer_object(Lr) for Lr in layers.values()]
     parts += eye_objects(B, c)
     parts += shoe_objects(B, c, cov)
-    parts += extras(c, B, cov, layers)
+    ex = extras(c, B, cov, layers)
+    cloth = [o for o in ex if o.name.startswith(("skirt", "apron"))]    # already even quads: kept out of decimation
+    parts += [o for o in ex if o not in cloth]
     # ---- rig + weights + one material ----
     arm = BC.build_armature(c["id"], B.J)
-    for o in parts:
+    for o in parts + cloth:
         apply_weights(o, arm)
     mat = atlas_material(c, tex)
-    for o in parts:
+    for o in parts + cloth:
         o.data.materials.clear()
         o.data.materials.append(mat)
         if not o.data.uv_layers:
             o.data.uv_layers.new(name="UVMap")
         if not o.data.attributes.get("_mask"):
             set_mask(o, (0, 0, 0))
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
-    for o in parts:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = parts[0]
-    bpy.ops.object.join()
-    mesh = parts[0]
+
+    def join(objs):
+        for o in bpy.context.view_layer.objects:
+            o.select_set(False)
+        for o in objs:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        bpy.ops.object.join()
+        return objs[0]
+    mesh = join(parts)
     mesh.name = c["id"] + "_mesh"
+    cloth_tris = sum(len(p.vertices) - 2 for o in cloth for p in o.data.polygons)
     decimate_protected(mesh, B, budget(c), face_keep=0.75 if budget(c) <= 9000 else 1.0)
+    if cloth:
+        mesh = join([mesh] + cloth)
+        print("  + cloth", cloth_tris, "tris", flush=True)
     arm["character"] = c["id"]
     return arm, mesh
 

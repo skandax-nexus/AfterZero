@@ -9,7 +9,7 @@
    Zones - top bar (objective | timer/loop/detection/toast | journal + pause + time-state list),
    bottom zone (interaction prompt + subtitles, placed above the controls by UI.layout), touch controls
    (action cluster + time switcher, positioned by UI.layout for portrait / landscape / left-handed). */
-:root { --cyan:#6ff0ff; --past:#ffc77a; --present:#8fd3ff; --future:#d48cff; --ink:#e6edf6; --muted:#8796ab; --panel:rgba(8,12,20,.93); --line:#22324a; --sub-scale:1;
+:root { --cyan:#6ff0ff; --past:#ffc77a; --present:#8fd3ff; --future:#d48cff; --ink:#e6edf6; --muted:#8796ab; --panel:#080c14; --line:#22324a; --sub-scale:1;
   --sl: env(safe-area-inset-left,0px); --sr: env(safe-area-inset-right,0px); --st: env(safe-area-inset-top,0px); --sb: env(safe-area-inset-bottom,0px);
   --m: clamp(10px, 3vmin, 22px); --gap: clamp(6px, 1.8vmin, 12px);
   --fs: clamp(13px, 3.6vmin, 17px); --fs-s: clamp(10px, 2.8vmin, 13px);
@@ -98,7 +98,7 @@ body.locked .tb { opacity:.15; pointer-events:none; }
 @media (max-width: 480px) { #bJournal span { display:none; } #bJournal { padding:0; width:44px; } }
 
 /* ---------------- panels ---------------- */
-.panel { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.6); z-index:10; padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl)); }
+.panel { position:fixed; inset:0; display:none; place-items:center; background:rgba(2,4,8,.8); z-index:10; padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sl)); }
 .panel.show { display:grid; }
 #pSettings { z-index:12; }   /* opened from the title menu or the pause menu: always on top of both */
 .box { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:clamp(14px,3vmin,20px) clamp(14px,3.4vmin,22px); width:min(520px, calc(var(--vw) - 24px)); max-width:calc(var(--vw) - 24px);

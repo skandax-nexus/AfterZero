@@ -28,9 +28,9 @@ redistributed.
 | run | 127_07 "run" | 4.3 m/s | 61-141 |
 | sprint | 143_01 "run" | 6.4 m/s | 7-93 |
 | crouch | 136_09 "walk crouched" | sneak, 0.84 m/s | 900-1045 |
-| talk | 18_08 "conversation, explain with hand gestures" | 1402-1740 loop |
-| nod | 18_08 (the listener) + soft head nods | 456-939 loop |
-| sad | 137_28 idle + slumped posture, slowed 1.35x | 3446-3722 loop |
+| talk | 18_08 "conversation, explain with hand gestures" | calm stretch: head tilts, small hand gestures | 1730-2070 loop |
+| nod | 18_08 | the listener, with soft head nods | 456-939 loop |
+| sad | 137_28 | idle with a slumped posture, slowed 1.35x | 3446-3722 loop |
 | look | 137_28 "normal wait" | hands on hips, looking around | 2284-2704 loop |
 | work | 62_07 "hammering a nail" | hands busy at a bench, head down | 460-822 loop |
 | fall | 143_05 "jumping distances" | airborne, arms out (ping-pong, in place) | 172-186 |
@@ -47,6 +47,9 @@ redistributed.
    - **Limbs:** clavicle, arm, hand, leg, foot and toe are matched by direction. A constant rest alignment turns our
      A-pose bone onto the CMU T-pose segment. Twist comes from an anatomical axis: forward for arms and legs, up for
      feet. Each bone's direction then follows the actor exactly.
+   - **Clavicles:** CMU shoulder joints sit high, which reads as a 20-35° shrug on our rig. Each clavicle keeps 20% of
+     the take's mean offset from rest (relative to the chest) and 60% of its motion around that mean. It then drops 5°,
+     for relaxed shoulders under hanging arms. The upper arms keep their world rotations.
    - **Torso and head:** they take the source's world rotation change, so our own spine curve is kept.
    - **Pelvis:** it follows the mid-point between the hip joints, scaled by leg length. Stride therefore matches our
      proportions.
