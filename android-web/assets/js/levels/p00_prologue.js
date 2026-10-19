@@ -60,13 +60,20 @@ AZ.registerLevel({
       talk: [line("Conductor Sefa", "Where from? This is the only train, friend. It goes to Veyra and it stops."), line("Conductor Sefa", "Funny thing. I count one more passenger off than I count on. Every night."), line("Arin", "Every night?"), line("Conductor Sefa", "Did I say that? Long shift. Off you go, the festival's starting.")],
       cond: [{ flag: "P.letterRead", sets: "P.talkedConductor", lines: [line("Arin", "Does this seal mean anything? A ring with a zero."), line("Conductor Sefa", "That's the tower's seal. Only the clockkeeper uses it. And she hasn't written to anyone in forty years."), line("Conductor Sefa", "The train came from the end of the line. Don't ask me where the end of the line is.")] }],
       talkedFlag: "P.talkedConductor", changedFlag: "P.offTrain", changedRoute: [[0, 9.6, 999, "look"]], changedTalk: [line("Conductor Sefa", "Go on. The bell rings twice tonight. It always does.")] });
-    // A passenger sits on the bench backed on partition zp, facing d (+1 = toward the exit). Until the cast has a
-    // 'sit' clip they stand in the bay instead (never inside the bench).
-    const seated = (o, s, zp, d, aisle) => {
+    // A passenger sits on the bench backed on partition zp, facing d (+1 = toward the exit); the pelvis goes 0.34 m in
+    // front of the partition (against the backrest), on the window cushion (|x| 1.31) or the aisle one (0.80). The
+    // cast's own 'sit' clip is used when it exists; until then a seated pose is built from the idle clip (see
+    // sitAction) so nobody stands about in a moving train. Toy people (no skeleton) stand in the bay instead.
+    const seated = (o, s, zp, d, aisle, pose) => {
       const x = s * (aisle ? 0.80 : 1.31), z = zp + d * 0.34, yaw = d > 0 ? 0 : Math.PI;
       const n = L.npc(Object.assign({ name: "", named: false, at: [x, z], yaw, route: [[x, z, 999, "sit"]] }, o));
       const h = n.p.human;
-      if (!h || !h.actions || !h.actions.sit) {
+      if (h && h.actions && !h.actions.sit) h.actions.sit = sitAction(h, lay.seatY || 0.466, n.p.group.scale.y, pose || {});
+      if (h && h.actions && h.actions.sit) {
+        const play = h.play;   // the NPC code asks for 'idle' while an activity it does not know is running
+        h.play = (name, fade, speed) => play(name === "idle" ? "sit" : name, fade, speed);
+        h.play("sit", 0);
+      } else {
         const sz = zp + d * 0.95, sx = s * (aisle ? 0.62 : 0.95);
         n.p.group.position.set(sx, n.p.group.position.y, sz); n.p.group.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
         n.route = [[sx, sz, 999, "look"]]; n.o.route = n.route;
@@ -75,12 +82,12 @@ AZ.registerLevel({
       }
       return n;
     };
-    seated({ coat: "olive" }, 1, -9, 1, false);              // asleep against the window, behind Arin
-    seated({ coat: "burgundy" }, -1, -3, -1, false);         // reading by the window
-    seated({ coat: "grey" }, 1, -1, 1, true);                // an old man dozing on the aisle seat
-    seated({ coat: "red" }, -1, 5, -1, false);               // the child's mother, facing her
-    seated({ coat: "ochre", scale: 0.6 }, -1, 3, 1, false);  // the child, asleep
-    seated({ coat: "gold" }, 1, 7, -1, false);
+    seated({ coat: "olive" }, 1, -9, 1, false, { head: [0.15, 0.3, 0.55], chest: [0.02, 0, 0.1], arms: 0.5 });       // asleep against the window, behind Arin
+    seated({ coat: "burgundy" }, -1, -3, -1, false, { head: [-0.35, 0, 0], fore: 0.65, upper: 0.12 });            // reading by the window
+    seated({ coat: "grey" }, 1, -1, 1, true, { head: [-0.45, -0.2, 0.12], chest: [0.08, 0, 0], arms: 0.2 });       // an old man dozing on the aisle seat
+    seated({ coat: "red" }, -1, 5, -1, false, { head: [0.05, 0.75, 0.1], chest: [0, 0.25, 0] });                   // the child's mother, turned to her
+    seated({ coat: "ochre", scale: 0.6 }, -1, 3, 1, false, { head: [0.2, -0.2, -0.55], chest: [0.05, 0, -0.2], arms: 0.55 });  // the child, asleep against the window
+    seated({ coat: "gold" }, 1, 7, -1, false, { head: [0.05, -0.55, 0], arms: 0.35 });                            // watching the rain
     L.onHum([-1.05, 0.5, 3.6], 4, () => { L.set("P.humHeard"); L.say([line("Child", "(waking)  That song... how do you know the Nursery song?"), line("Arin", "I don't. It was just... in my head.")]); });
     L.zone({ at: [-0.3, 1.2, 3.6], size: [2.5, 2.5, 2], toast: "A tune is stuck in your head. Press HUM." });
     L.zone({ at: [0, 1.2, 12.3], size: [3, 2.5, 1.4], flag: "P.offTrain", toast: "Veyra. The air smells of rain and festival smoke." });
@@ -164,6 +171,41 @@ AZ.registerLevel({
     });
   },
 });
+
+/** A seated pose for a cast character built from the first frame of its idle clip: hips lowered onto the cushion
+ *  (seatY), thighs swung forward, shins down, hands in the lap, plus a slow breathing loop. The rig runs each bone's +Y
+ *  down the limb with +X as the bend axis, so a positive local-X delta swings a limb forward. pose: {upper, fore, arms,
+ *  head:[x,y,z], chest:[x,y,z]} (radians). Replaced by the cast's own 'sit' clip as soon as that exists. */
+function sitAction(h, seatY, scale, pose) {
+  const idle = h.actions.idle && h.actions.idle.getClip();
+  if (!idle || !h.mixer) return null;
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), Q = THREE.Quaternion;
+  const ax = (q, v, a) => a && q.multiply(new Q().setFromAxisAngle(v, a));
+  const upper = pose.upper !== undefined ? pose.upper : 0.3, fore = (pose.fore !== undefined ? pose.fore : 0.25) + (pose.arms || 0);
+  const D = { thigh_L: 1.5, thigh_R: 1.5, shin_L: -1.5, shin_R: -1.5, upperarm_L: upper, upperarm_R: upper, forearm_L: fore, forearm_R: fore, spine: 0.06, chest: 0.04, head: -0.06 };
+  const E = { head: pose.head, chest: pose.chest, spine: pose.spine };
+  const dur = 4.2, tracks = [];
+  idle.tracks.forEach(t => {
+    const dot = t.name.lastIndexOf("."), node = t.name.slice(0, dot), prop = t.name.slice(dot + 1), base = node.replace(/_\d+$/, "");
+    const v = Array.from(t.values.slice(0, t.getValueSize()));
+    if (prop === "quaternion") {
+      const q = new Q().fromArray(v);
+      ax(q, X, D[base]);
+      if (pose.arms && /^upperarm_/.test(base)) ax(q, Z, (base === "upperarm_L" ? -1 : 1) * pose.arms * 0.5);   // hands drawn in to the lap
+      if (E[base]) { ax(q, X, E[base][0]); ax(q, Y, E[base][1]); ax(q, Z, E[base][2]); }
+      q.toArray(v);
+      const w = v.slice();
+      if (base === "chest" || base === "head") new Q().fromArray(v).multiply(new Q().setFromAxisAngle(X, base === "chest" ? 0.03 : -0.02)).toArray(w);
+      tracks.push(new THREE.QuaternionKeyframeTrack(t.name, [0, dur / 2, dur], v.concat(w, v)));
+    } else if (prop === "position" && base === "hips") {
+      const stand = v[1] * scale;                       // standing hip height in metres -> pelvis depth scales with the body
+      v[0] = 0; v[2] = 0; v[1] = (seatY + 0.105 * stand / 1.075) / scale;
+      const w = v.slice(); w[1] += 0.003;
+      tracks.push(new THREE.VectorKeyframeTrack(t.name, [0, dur / 2, dur], v.concat(w, v)));
+    } else tracks.push(new THREE.VectorKeyframeTrack(t.name, [0, dur], v.concat(v)));
+  });
+  return h.mixer.clipAction(new THREE.AnimationClip("sit", dur, tracks));
+}
 
 /** Box-built carriage (used only if the baked prop could not load, e.g. a browser that blocks file:// fetches). */
 function fallbackCarriage(L, S, lay) {

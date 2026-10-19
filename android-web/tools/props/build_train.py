@@ -1,7 +1,7 @@
 """AFTERZERO - Prologue train carriage ("The Last Train"): modelled in code, lightmap-baked in Cycles, exported as glTF.
 
 Run with Blender's Python module (bpy 4.x/5.x, numpy + Pillow):
-    <blender-venv>/bin/python tools/props/build_train.py [--samples 160] [--res 2048] [--fast] [--no-bake]
+    <blender-venv>/bin/python tools/props/build_train.py [--samples=192] [--res=2048] [--fast] [--no-bake] [--keep-lightmap]
 
 Outputs (assets/props/):
     train_carriage.glb    nodes (one primitive per material each):
@@ -75,8 +75,8 @@ MATS = {
     "brass": dict(color=(0.80, 0.56, 0.24), rough=0.28, metal=1.0, bake=(0.55, 0.40, 0.18)),
     "iron": dict(color=(0.030, 0.030, 0.034), rough=0.4, metal=0.6),
     "leather": dict(color=(0.13, 0.055, 0.03), rough=0.42),
-    "frost": dict(tex="decals", tile=1.0, tint=(1, 1, 1), rough=0.1, emissive=(0.012, 0.010, 0.008)),
-    "wool": dict(color=(0.026, 0.028, 0.040), rough=0.95),
+    "frost": dict(tex="decals", tile=1.0, tint=(1, 1, 1), rough=0.34, emissive=(0.012, 0.010, 0.008)),
+    "wool": dict(color=(0.050, 0.052, 0.072), rough=0.95),
     "lampGlass": dict(color=(1.0, 0.70, 0.40), baked=False, emissive=(1.0, 0.70, 0.40), kind="lamp"),
     "glass": dict(color=(0.6, 0.7, 0.75), baked=False, kind="glass"),
     "liveryG": dict(color=(0.022, 0.06, 0.04), rough=0.3, baked=False, kind="lit"),
@@ -1106,20 +1106,22 @@ def tex_carpet(n):
 
 
 def tex_ceiling(n):
-    """Ivory lincrusta: embossed quatrefoil relief, shaded by a fixed light (cavity) + faint soot."""
+    """Cream painted lincrusta: a quiet embossed quatrefoil relief (low contrast so it reads as texture, not dirt),
+    brushed paint grain and a faint yellowing from forty years of lamp soot."""
     x, y = grid(n)
-    K = 3
+    K = 2
     fu, fv = (x * K) % 1 - 0.5, (y * K) % 1 - 0.5
     r = np.hypot(fu, fv)
     ang = np.arctan2(fv, fu)
-    h = sstep(0.04, 0.0, np.abs(r - (0.22 + 0.08 * np.cos(4 * ang))))
-    h += sstep(0.03, 0.0, np.abs(np.abs(fu) + np.abs(fv) - 0.5)) * 0.8
-    h += sstep(0.05, 0.0, r) * 0.7
-    hb = blur(h, 1.2)
+    h = sstep(0.05, 0.0, np.abs(r - (0.24 + 0.07 * np.cos(4 * ang))))
+    h += sstep(0.03, 0.0, np.abs(np.abs(fu) + np.abs(fv) - 0.5)) * 0.6
+    h += sstep(0.06, 0.0, r) * 0.5
+    hb = blur(h, 1.6)
     sh = np.roll(hb, 2, 0) - hb + 0.5 * (np.roll(hb, 2, 1) - hb)
-    alb = lin(0xd8ccae) * np.ones((n, n, 1))
-    alb *= (1 + 0.35 * sh)[..., None]
-    alb *= (0.93 + 0.1 * fbm(x, y, 2, 4, 541))[..., None]
+    alb = lin(0xc9bc9c) * np.ones((n, n, 1))
+    alb *= (1 + 0.14 * sh)[..., None]
+    alb *= (0.96 + 0.05 * fbm(x, y, 1, 4, 541, aniso=(1, 12)))[..., None]
+    alb *= (0.97 + 0.06 * fbm(x, y, 2, 3, 542))[..., None]
     return np.clip(alb, 0.003, 1)
 
 
@@ -1297,17 +1299,17 @@ def make_decals():
     _ctext(dr, sx, sy - 14, "0", _font(serifB, 22), (190, 70, 60))
     # etched glass: frosted field, clear border lines, corner fans and a ring-and-zero monogram
     x0, y0, x1, y1 = DECAL_PX["etch"]
-    dr.rectangle([x0, y0, x1, y1], fill=(150, 156, 160))
-    for k, c in ((10, (72, 80, 88)), (16, (150, 156, 160)), (22, (90, 98, 106))):
+    dr.rectangle([x0, y0, x1, y1], fill=(108, 114, 120))
+    for k, c in ((10, (46, 52, 60)), (16, (108, 114, 120)), (22, (60, 66, 74))):
         dr.rectangle([x0 + k, y0 + k, x1 - k, y1 - k], outline=c, width=3)
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     for r in (54, 46):
-        dr.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(84, 92, 100), width=4)
-    _ctext(dr, cx, cy - 26, "0", _font(serifB, 40), (84, 92, 100))
+        dr.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(54, 60, 68), width=4)
+    _ctext(dr, cx, cy - 26, "0", _font(serifB, 40), (54, 60, 68))
     for (fx, fy) in ((x0 + 22, y0 + 22), (x1 - 22, y0 + 22), (x0 + 22, y1 - 22), (x1 - 22, y1 - 22)):
         for k in range(5):
             a0 = math.radians(k * 18 + (0 if fx < cx and fy < cy else 90 if fx > cx and fy < cy else 270 if fx < cx else 180))
-            dr.line([fx, fy, fx + math.cos(a0) * 40 * (1 if fx < cx else 1), fy + math.sin(a0) * 40], fill=(96, 104, 112), width=2)
+            dr.line([fx, fy, fx + math.cos(a0) * 40 * (1 if fx < cx else 1), fy + math.sin(a0) * 40], fill=(64, 70, 78), width=2)
     a = np.asarray(img).astype(np.float64) / 255.0
     # age: slight grain + stains
     x, y = grid(DSZ)
@@ -1372,15 +1374,17 @@ def pack_charts(patches, res, pad=2, fill=0.80):
 # Cycles bake
 # =====================================================================================================================
 def bake_lights():
+    """(position, colour, watts, radius[, 'spot']). The pendant bowls throw most of their light down into the aisle and
+    the bays; a weaker point above each bowl gives the vault its soft glow. Radii are generous: soft shadows bake clean."""
     L = []
     for zb in BAYS:
-        L.append(((0.0, 2.58, zb), WARM, 22.0, 0.06, "spot"))
-        L.append(((0.0, 2.62, zb), WARM, 4.0, 0.06))
+        L.append(((0.0, 2.58, zb), WARM, 22.0, 0.10, "spot"))
+        L.append(((0.0, 2.63, zb), WARM, 2.2, 0.10))
     for z in (-10.0, 9.93):
-        L.append(((0.0, ceil_y(0) - 0.07, z), WARM, 16.0, 0.08))
+        L.append(((0.0, ceil_y(0) - 0.07, z), WARM, 14.0, 0.12))
     for s in (-1, 1):
         for zp in PARTS:
-            L.append(((s * (W - 0.14), 1.76, zp), WARM_SCONCE, 5.0, 0.025))
+            L.append(((s * (W - 0.14), 1.76, zp), WARM_SCONCE, 5.0, 0.045))
     return L
 
 
@@ -1396,10 +1400,19 @@ def blender_bake(G, res, samples):
     sc.cycles.use_denoising = False
     sc.cycles.max_bounces = 6
     sc.cycles.diffuse_bounces = 4
-    sc.cycles.glossy_bounces = 1
+    sc.cycles.glossy_bounces = 0
     sc.cycles.transmission_bounces = 0
     sc.cycles.transparent_max_bounces = 2
-    sc.cycles.sample_clamp_indirect = 2.0
+    # small bright lamps -> fireflies: clamp hard (the lightmap is normalised afterwards anyway) and let adaptive
+    # sampling spend the budget where the pools of light are noisy
+    sc.cycles.sample_clamp_direct = 6.0
+    sc.cycles.sample_clamp_indirect = 1.0
+    try:
+        sc.cycles.use_adaptive_sampling = True
+        sc.cycles.adaptive_threshold = 0.01
+        sc.cycles.adaptive_min_samples = min(32, samples)
+    except Exception:
+        pass
     try:
         sc.render.threads_mode = "AUTO"
     except Exception:
@@ -1433,6 +1446,10 @@ def blender_bake(G, res, samples):
         bsdf.inputs["Base Color"].default_value = (*[float(c) for c in col], 1.0)
         bsdf.inputs["Roughness"].default_value = 0.75
         bsdf.inputs["Metallic"].default_value = 0.0
+        for spec in ("Specular IOR Level", "Specular"):   # diffuse-only bake: no glossy fireflies off the varnish
+            if spec in bsdf.inputs:
+                bsdf.inputs[spec].default_value = 0.0
+                break
         if target:
             tex = nt.nodes.new("ShaderNodeTexImage")
             tex.image = img
@@ -1647,11 +1664,30 @@ def export(G, path, lm_scale, res, rho):
     print("  triangles per node:", stats, "total", sum(stats.values()))
 
 
+def glb_extras(path):
+    """Scene extras of an existing GLB (None if missing/unreadable)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+            if head[:4] != b"glTF":
+                return None
+            ln, typ = struct.unpack("<II", f.read(8))
+            if typ != 0x4E4F534A:
+                return None
+            js = json.loads(f.read(ln).decode("utf-8"))
+        return js["scenes"][0].get("extras")
+    except Exception:
+        return None
+
+
 def meshopt(path):
     cli = os.environ.get("GLTF_TRANSFORM") or shutil.which("gltf-transform")
     if not cli:
-        guess = os.path.join(os.environ.get("AZ_SCRATCH", ""), "tools", "node_modules", ".bin", "gltf-transform")
-        cli = guess if os.path.exists(guess) else None
+        for guess in (os.path.join(ROOT, "tools", "node_modules", ".bin", "gltf-transform"),
+                      os.path.join(os.environ.get("AZ_SCRATCH", ""), "tools", "node_modules", ".bin", "gltf-transform")):
+            if os.path.exists(guess):
+                cli = guess
+                break
     if not cli:
         print("  (gltf-transform not found: GLB left uncompressed; set GLTF_TRANSFORM to enable meshopt)")
         return
@@ -1667,11 +1703,12 @@ def meshopt(path):
 # =====================================================================================================================
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--samples", type=int, default=160)
+    ap.add_argument("--samples", type=int, default=192)
     ap.add_argument("--res", type=int, default=2048)
     ap.add_argument("--fast", action="store_true", help="quick low-res bake for layout iteration")
     ap.add_argument("--no-bake", action="store_true", help="flat lightmap (geometry only)")
     ap.add_argument("--textures-only", action="store_true")
+    ap.add_argument("--keep-lightmap", action="store_true", help="re-export geometry/materials against the existing bake (same layout)")
     args = ap.parse_args([a for a in sys.argv[1:] if a.startswith("--")] if "--" not in sys.argv else sys.argv[sys.argv.index("--") + 1:])
     if args.fast:
         args.res, args.samples = 1024, 24
@@ -1694,20 +1731,30 @@ def main():
     G = build_carriage()
     G.texmeans = texmeans
     print("  patches:", len(G.patches))
-    rho, idmap = pack_charts(G.patches, args.res)
-    if args.no_bake:
-        L = np.full((args.res, args.res, 3), 0.35, np.float32)
-    else:
-        print("baking ...")
-        px = blender_bake(G, args.res, args.samples)
-        L = post_lightmap(px, idmap)
-    lum = L.mean(-1)
-    used = idmap >= 0
-    scale = float(np.percentile(lum[used], 99.6)) * 1.15 if used.any() else 1.0
-    enc = to_srgb(np.clip(L / scale, 0, 1))
-    save(os.path.join(OUT, "train_lightmap.jpg"), enc, 90, 0)
-    print("export ...")
     path = os.path.join(OUT, "train_carriage.glb")
+    old = glb_extras(path) if args.keep_lightmap else None
+    if old and old.get("lightmap"):
+        args.res = int(old["lightmap"]["size"])
+    rho, idmap = pack_charts(G.patches, args.res)
+    if old and old.get("lightmap") and os.path.exists(os.path.join(OUT, "train_lightmap.jpg")):
+        # material/colour tweaks only: the charts are deterministic for unchanged geometry, so the bake is still valid
+        if abs(old["lightmap"]["texelsPerMetre"] - round(rho, 1)) > 0.05:
+            print("  WARNING: chart layout changed (%.1f -> %.1f texels/m); the kept lightmap will not match" % (old["lightmap"]["texelsPerMetre"], rho))
+        scale = float(old["lightmap"]["scale"])
+        print("  lightmap kept (scale %.3f)" % scale)
+    else:
+        if args.no_bake:
+            L = np.full((args.res, args.res, 3), 0.35, np.float32)
+        else:
+            print("baking ...")
+            px = blender_bake(G, args.res, args.samples)
+            L = post_lightmap(px, idmap)
+        lum = L.mean(-1)
+        used = idmap >= 0
+        scale = float(np.percentile(lum[used], 99.6)) * 1.15 if used.any() else 1.0
+        enc = to_srgb(np.clip(L / scale, 0, 1))
+        save(os.path.join(OUT, "train_lightmap.jpg"), enc, 88, 2)   # lighting tolerates chroma subsampling; ~40% smaller
+    print("export ...")
     export(G, path, scale, args.res, rho)
     meshopt(path)
     for f in sorted(os.listdir(OUT)):

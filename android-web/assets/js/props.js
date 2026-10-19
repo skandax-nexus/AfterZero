@@ -11,7 +11,7 @@
 (function () {
   "use strict";
   const AZ = window.AZ, R = AZ.render;
-  const P = (AZ.props = { ready: false, gltf: null, tex: {}, meta: null, gain: 2.6 });
+  const P = (AZ.props = { ready: false, gltf: null, tex: {}, meta: null, gain: 2.9 });
   const DIR = "props/";
   P.FILES = ["train_carriage.glb", "train_lightmap.jpg", "train_wood.jpg", "train_moquette.jpg", "train_velvet.jpg", "train_carpet.jpg", "train_ceiling.jpg", "train_decals.jpg"];
   const emb = f => window.AZ_PROPS && window.AZ_PROPS[f];
@@ -127,9 +127,17 @@
     return m;
   }
   function lampMat(swaying) {
-    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.72, 0.42).multiplyScalar(2.4), side: THREE.DoubleSide });
+    // opal glass: brightest where the bulb sits (the bottom 13 cm of a pendant bowl / sconce tulip), cooler at the rim
+    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.72, 0.42).multiplyScalar(2.1), side: THREE.DoubleSide });
     m.userData.base = m.color.clone();
-    m.onBeforeCompile = sh => sway(sh, swaying);
+    m.onBeforeCompile = sh => {
+      sway(sh, swaying);
+      sh.vertexShader = "varying vec3 vAzLw;\n" + sh.vertexShader.replace("#include <fog_vertex>", "#include <fog_vertex>\nvAzLw = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+      sh.fragmentShader = "varying vec3 vAzLw;\n" + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
+        float azLk = smoothstep( 0.14, 0.0, mod( vAzLw.y - 1.70, 0.83 ) );
+        diffuseColor.rgb *= 0.72 + 0.55 * azLk;
+        diffuseColor.b *= 0.85 + 0.15 * azLk;`);
+    };
     m.customProgramCacheKey = () => "azLamp" + (swaying ? "S" : "");
     return m;
   }
@@ -357,7 +365,7 @@
     for (const sx of [-1, 1]) R.rain(rainG, [7, 10, 46], [sx * 5.6, -2, 0], 520);
 
     // lamps for the people (pooled point lights) + lamp flicker
-    const lampLights = (meta.lights || []).filter(l => l.w > 10).map(l => L.light(root, 0xffb878, l.w > 20 ? 1.35 : 0.8, l.w > 20 ? 4.6 : 3.6, l.p[0], l.p[1] - 0.15, l.p[2]));
+    const lampLights = (meta.lights || []).filter(l => l.w > 10).map(l => L.light(root, 0xffb878, l.w > 20 ? 1.9 : 1.1, l.w > 20 ? 5.0 : 3.8, l.p[0], l.p[1] - 0.15, l.p[2]));
     const sweepL = [L.light(root, 0xff8a3a, 0, 9, -3.3, 3.4, 0), L.light(root, 0xff8a3a, 0, 9, 3.3, 3.4, 0)];
     const flashL = L.light(root, 0xaec8ff, 0, 10, -2.6, 2.2, 0);
     const lamps = [MATS["lampGlass"], MATS["lampGlass|s"]].filter(Boolean);
