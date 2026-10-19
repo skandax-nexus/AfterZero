@@ -420,8 +420,24 @@
     composer.setSize(w, h);
     grade.uniforms.uRes.value.set(1 / Math.max(1, Math.floor(w * pr)), 1 / Math.max(1, Math.floor(h * pr)));
     camera.aspect = w / Math.max(1, h);
+    // 0 = landscape .. 1 = tall phone held upright (aspect <= ~0.55)
+    R.portrait = Math.max(0, Math.min(1, (h / Math.max(1, w) - 1) / 0.8));
+    // Portrait lens shift: the orbit pivot (Arin's head) sits a little above screen centre, so the character
+    // is framed above the thumb controls and the path ahead stays visible. Pure frustum shift, no tilt.
+    if (R.portrait > 0.01) camera.setViewOffset(w, h, 0, Math.round(h * 0.075 * R.portrait), w, h);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   };
+  /** Vertical FOV for a base (landscape) vertical FOV: on tall screens widen it so the HORIZONTAL view stays
+   *  comfortable (>= base + 2 deg, vertical capped at base + 40); on ultra-wide screens cap horizontal at 100 deg. */
+  R.fovFor = base => {
+    const a = camera.aspect, r = Math.PI / 180, hf = 2 * Math.atan(Math.tan(base * r / 2) * a) / r;
+    const vFor = h => 2 * Math.atan(Math.tan(h * r / 2) / a) / r;
+    if (hf < base + 2) return Math.min(base + 40, vFor(base + 2));
+    if (hf > 100) return vFor(100);
+    return base;
+  };
+  R.portrait = 0;
   // Dynamic resolution in Auto: keep the frame rate by trading pixels; if even the floor is too slow
   // for several windows, drop to the Low feature tier (once per session, no oscillation).
   let avg = 1 / 60, adjust = 0, starved = 0;

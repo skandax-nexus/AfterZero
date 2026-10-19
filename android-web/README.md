@@ -1,7 +1,7 @@
 # AfterZero: The First Cycle — Android (touch)
 
 Installable Android game (APK) of AfterZero: The First Cycle, built for touch screens. The game runs on a three.js
-engine inside a full-screen, landscape Android WebView: Prologue, 8 chapters, Epilogue, all from Design v2.
+engine inside a full-screen Android WebView that rotates freely (portrait and landscape, live reflow): Prologue, 8 chapters, Epilogue, all from Design v2.
 
 - Build the APK: `./tools/build_apk.sh` -> `dist/AfterZero_FirstCycle.apk` (needs Java 17+; Apktool and
   uber-apk-signer are in `tools/`).
@@ -12,5 +12,7 @@ engine inside a full-screen, landscape Android WebView: Prologue, 8 chapters, Ep
   via Python) into `assets/models/cast.glb` + `anims.glb`, driven by `js/humans.js`. Third-person over-the-shoulder
   camera with wall collision (Settings: camera distance, Arin's coat).
 - Automated play-tests: `node test/run.js P00 L01 ... --script=test/solve/L01.js` (headless Chromium).
+- Layout check: `node test/layout.js [--quick]` resizes one page through phone/tablet sizes in both orientations
+  (plus notch insets and left-handed mode) and fails on overlapping controls/text, unsafe placement or panels that do not fit.
 
 The full-fidelity Unity 6 version lives in the separate `AfterZero_TheFirstCycle` project.

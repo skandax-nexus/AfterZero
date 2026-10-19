@@ -186,7 +186,9 @@
     R.points(menuRoot, 900, 0x7ff0ff, 0.12, [120, 50, 120], [0, 0, 0], { rise: 0.4 });
     menuScene = (dt, t) => {
       rings.forEach((m, i) => { m.rotation.z += dt * (0.1 + i * 0.07) * (i % 2 ? -1 : 1); });
-      R.camera.position.set(Math.sin(t * 0.03) * 70, 26 + Math.sin(t * 0.1) * 3, Math.cos(t * 0.03) * 70);
+      const port = R.portrait || 0, f = R.fovFor ? R.fovFor(62) : 62;
+      if (Math.abs(R.camera.fov - f) > 0.1) { R.camera.fov = f; R.camera.updateProjectionMatrix(); }
+      R.camera.position.set(Math.sin(t * 0.03) * (70 + port * 25), 26 + port * 6 + Math.sin(t * 0.1) * 3, Math.cos(t * 0.03) * (70 + port * 25));
       R.camera.lookAt(0, 30, 0);
       R.animateParticles(menuRoot, dt, t);
     };
@@ -227,7 +229,13 @@
     const boot = document.getElementById("boot"); if (boot) boot.textContent = "AFTERZERO  ·  LOADING VEYRA";
     await Promise.all([AZ.humans.load(), AZ.props ? AZ.props.load() : null]);
     UI.build();
-    addEventListener("resize", () => R.resize());
+    // Live reflow on rotation / window resize (the Android activity keeps the WebView across rotations).
+    // Some WebViews report the new size a moment after orientationchange, so re-check briefly.
+    const relayout = () => { R.resize(); UI.layout(); };
+    addEventListener("resize", relayout);
+    addEventListener("orientationchange", () => { relayout(); setTimeout(relayout, 250); setTimeout(relayout, 700); });
+    if (window.visualViewport) visualViewport.addEventListener("resize", relayout);
+    UI.applyOrientation();
     document.addEventListener("visibilitychange", () => { if (document.hidden) window.azPause(); });
     t0 = performance.now(); last = t0;
     requestAnimationFrame(frame);

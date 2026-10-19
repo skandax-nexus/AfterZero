@@ -2,7 +2,8 @@
 .super Landroid/app/Activity;
 .source "MainActivity.java"
 
-# Full-screen landscape WebView host for the AfterZero game (assets/index.html).
+# Full-screen WebView host for the AfterZero game (assets/index.html). Rotates freely (portrait + landscape):
+# configChanges keeps the activity and WebView alive across rotations, the page reflows on its resize event.
 
 .field private web:Landroid/webkit/WebView;
 
@@ -62,6 +63,14 @@
     # IMMERSIVE_STICKY | LAYOUT_STABLE | LAYOUT_HIDE_NAV | LAYOUT_FULLSCREEN | HIDE_NAV | FULLSCREEN
     const/16 v1, 0x1706
     invoke-virtual {v0, v1}, Landroid/view/View;->setSystemUiVisibility(I)V
+    return-void
+.end method
+
+# Rotation / resize: the activity is not recreated (configChanges); just re-apply immersive full screen.
+.method public onConfigurationChanged(Landroid/content/res/Configuration;)V
+    .registers 2
+    invoke-super {p0, p1}, Landroid/app/Activity;->onConfigurationChanged(Landroid/content/res/Configuration;)V
+    invoke-direct {p0}, Lcom/skandax/afterzero/MainActivity;->immersive()V
     return-void
 .end method
 

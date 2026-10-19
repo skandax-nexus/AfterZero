@@ -38,3 +38,17 @@
     invoke-virtual {v0}, Landroid/app/Activity;->finish()V
     return-void
 .end method
+
+# window.AZNative.setOrientation(code): ActivityInfo.SCREEN_ORIENTATION_* (10 fullSensor, 6 sensorLandscape, 7 sensorPortrait)
+.method public setOrientation(I)V
+    .registers 3
+    .annotation runtime Landroid/webkit/JavascriptInterface;
+    .end annotation
+    :try_start
+    iget-object v0, p0, Lcom/skandax/afterzero/Bridge;->act:Landroid/app/Activity;
+    invoke-virtual {v0, p1}, Landroid/app/Activity;->setRequestedOrientation(I)V
+    :try_end
+    .catch Ljava/lang/Throwable; {:try_start .. :try_end} :end
+    :end
+    return-void
+.end method

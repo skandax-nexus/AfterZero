@@ -1,13 +1,15 @@
-/* AFTERZERO — the cast: our own characters (built by tools/characters/build_characters.py), skinned and animated.
-   models/cast.glb holds every character (one root per character id); models/anims.glb holds the shared rig + clips.
-   Every body has its own proportions, so the shared clips are retargeted onto each skeleton (once, on first use). */
+/* AFTERZERO — the cast: our own characters (built by tools/characters/build_humans.py), skinned and animated.
+   models/cast.glb holds every character (one root per character id); models/anims.glb holds the shared reference rig +
+   motion-capture clips (tools/characters/mocap/build_anims.py: CMU mocap retargeted to our rig; per-clip speeds in the
+   rig's extras). Every body has its own proportions, so the shared clips are retargeted onto each skeleton (once, on
+   first use), with floor contact corrected per body; h.move(speed) picks walk/jog/run/sprint so feet do not slide. */
 (function () {
   "use strict";
   const AZ = window.AZ;
-  const H = (AZ.humans = { ready: false, ids: [], SEAT: 0.46 });   // SEAT: bench height (m) the "sit" clip is authored for
+  const H = (AZ.humans = { ready: false, ids: [], SEAT: 0.466 });   // SEAT: bench height (m) the "sit" clip is authored for (anims meta.seat wins)
   const T = {};          // id -> { root, clips, height, hipsRest, townsfolk }
   const key = n => n.replace(/_\d+$/, "");
-  let lib = null;        // { clips, root }
+  let lib = null;        // { clips, root, meta } (meta: per-clip speed/cycle from tools/characters/mocap/build_anims.py)
 
   // ---------------- loading ----------------
   H.load = async () => {
@@ -27,7 +29,10 @@
       try {
         if (window.MeshoptDecoder && MeshoptDecoder.ready) await MeshoptDecoder.ready;
         const [cast, anims] = await Promise.all([get("models/cast.glb"), get("models/anims.glb")]);
-        lib = { clips: anims.animations, root: anims.scene };
+        let meta = {};
+        anims.scene.traverse(o => { if (o.userData && o.userData.az_clips) try { meta = JSON.parse(o.userData.az_clips); } catch (e) { /* older anims.glb */ } });
+        lib = { clips: anims.animations, root: anims.scene, meta };
+        H.meta = meta;
         cast.scene.children.slice().forEach(root => {
           let skinned = null, hipsB = null, top = 0;
           root.traverse(o => {
@@ -58,10 +63,59 @@
   /** Shared clips baked onto a template's skeleton (world-space retarget: every body has its own proportions/rest pose). */
   function clipsFor(t) {
     if (t.clips) return t.clips;
-    t.clips = {};
-    lib.clips.forEach(c => { t.clips[c.name] = retarget(lib.root, c, t.root); });
+    t.clips = {}; t.speeds = {};
+    lib.clips.forEach(c => { const r = retarget(lib.root, c, t.root); t.clips[c.name] = r.clip; t.speeds[c.name] = r.speed; });
     return t.clips;
   }
+  /** Sole points (heel, ball, toe tip; on the floor in the rest pose) as [bone, local point] pairs, per foot. */
+  function solePoints(root, bones) {
+    const out = [], A = new THREE.Vector3(), B = new THREE.Vector3(), f = new THREE.Vector3();
+    let top = 0;
+    root.traverse(o => { if (bones.includes(o)) top = Math.max(top, o.getWorldPosition(A).y); });
+    for (const k of ["L", "R"]) {
+      const foot = bones.find(b => key(b.name) === "foot_" + k), toe = bones.find(b => key(b.name) === "toe_" + k);
+      if (!foot || !toe) continue;
+      foot.getWorldPosition(A); toe.getWorldPosition(B);
+      f.subVectors(B, A).setY(0); const len = f.length(); f.normalize();
+      const heel = A.clone().addScaledVector(f, -0.045 * top / 1.75).setY(0), ball = B.clone().setY(0), tip = B.clone().addScaledVector(f, len * 0.4).setY(0);
+      out.push([foot, foot.worldToLocal(heel)], [foot, foot.worldToLocal(ball)], [toe, toe.worldToLocal(tip)]);
+    }
+    return out;
+  }
+  const solePt = new THREE.Vector3();
+  const soleY = pts => { let m = Infinity; for (const [b, p] of pts) m = Math.min(m, solePt.copy(p).applyMatrix4(b.matrixWorld).y); return m; };
+  /** Two-bone leg IK (posed skeleton, world matrices current): bring the foot down / up until its lowest sole point is
+   *  on the floor, bending the knee in its own plane; the foot keeps its world orientation. maxDrop limits how far a foot may
+   *  reach down. Returns true when the leg was changed (thigh / shin / foot local quaternions updated). */
+  const ik = { H: new THREE.Vector3(), K: new THREE.Vector3(), A: new THREE.Vector3(), T: new THREE.Vector3(), K2: new THREE.Vector3(), u: new THREE.Vector3(), p: new THREE.Vector3(),
+    a: new THREE.Vector3(), b: new THREE.Vector3(), q1: new THREE.Quaternion(), q2: new THREE.Quaternion(), wt: new THREE.Quaternion(), ws: new THREE.Quaternion(), wf: new THREE.Quaternion(), wp: new THREE.Quaternion() };
+  function legToFloor(L, maxDrop) {
+    const { H: Hp, K, A, T: Tg, K2, u, p, a, b } = ik;
+    L.thigh.getWorldPosition(Hp); L.shin.getWorldPosition(K); L.foot.getWorldPosition(A);
+    const dy = Math.max(-soleY(L.sole), -maxDrop);                 // lowest sole point onto the floor
+    if (Math.abs(dy) < 0.004) return false;
+    Tg.copy(A); Tg.y += dy;
+    const l1 = Hp.distanceTo(K), l2 = K.distanceTo(A);
+    const d = Math.min(Math.max(Hp.distanceTo(Tg), Math.abs(l1 - l2) + 1e-4), (l1 + l2) * 0.999);
+    u.subVectors(Tg, Hp).normalize(); Tg.copy(Hp).addScaledVector(u, d);
+    const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d), hgt = Math.sqrt(Math.max(0, l1 * l1 - along * along));
+    p.subVectors(K, Hp); p.addScaledVector(u, -p.dot(u)).normalize();
+    K2.copy(Hp).addScaledVector(u, along).addScaledVector(p, hgt);
+    L.thigh.getWorldQuaternion(ik.wt); L.shin.getWorldQuaternion(ik.ws); L.foot.getWorldQuaternion(ik.wf); L.thigh.parent.getWorldQuaternion(ik.wp);
+    ik.q1.setFromUnitVectors(a.subVectors(K, Hp).normalize(), b.subVectors(K2, Hp).normalize());
+    ik.q2.setFromUnitVectors(a.subVectors(A, K).applyQuaternion(ik.q1).normalize(), b.subVectors(Tg, K2).normalize());
+    const nt = ik.wt.clone().premultiply(ik.q1), ns = ik.ws.clone().premultiply(ik.q1).premultiply(ik.q2);
+    L.thigh.quaternion.copy(ik.wp.invert().multiply(nt));
+    L.shin.quaternion.copy(nt.clone().invert().multiply(ns));
+    L.foot.quaternion.copy(ns.invert().multiply(ik.wf));
+    L.thigh.updateMatrixWorld(true);
+    return true;
+  }
+  /** clip (on the shared reference rig) -> {clip on dstRoot's skeleton, speed (m/s at timeScale 1, locomotion only)}.
+   *  Rotations: each bone takes the reference bone's world-space rotation change from rest. Pelvis: travel scaled by the
+   *  leg-length ratio; then, frame by frame, the pelvis height is corrected so this body's soles touch the floor exactly
+   *  when the reference body's do (no sinking or floating for long or short legs). Seated clips keep the pelvis on the
+   *  shared bench height (H.SEAT) instead. */
   function retarget(srcRoot, clip, dstRoot, fps = 30) {
     const sb = {}, db = [];
     srcRoot.traverse(b => { if (b.name && !b.isMesh) sb[key(b.name)] = b; });
@@ -72,16 +126,23 @@
     for (const k in sb) restS[k] = wq(sb[k]).invert();
     db.forEach(b => { restD.set(b, wq(b)); restLocal.set(b, b.quaternion.clone()); });
     const sHips = sb.hips, dHips = db.find(b => key(b.name) === "hips");
-    if (!sHips || !dHips) return clip;
+    const info = ((H.meta || {}).clips || {})[clip.name] || {};
+    if (!sHips || !dHips) return { clip, speed: info.speed || 0 };
+    const restHipPos = dHips.position.clone();
     const sHip0 = sHips.getWorldPosition(new THREE.Vector3()), dHip0 = dHips.getWorldPosition(new THREE.Vector3());
-    const ratio = dHip0.y / Math.max(1e-3, sHip0.y), seated = clip.name === "sit";
+    const ratio = dHip0.y / Math.max(1e-3, sHip0.y), seated = !!info.seat || clip.name === "sit", grounded = !seated && clip.name !== "fall";
+    const sSole = grounded ? solePoints(srcRoot, Object.values(sb)) : [], dSole = grounded ? solePoints(dstRoot, db) : [];
+    const seat = info.seat || H.SEAT, bone = n => db.find(b => key(b.name) === n);
+    const fSole = seated ? solePoints(dstRoot, db) : [];
+    const legs = !seated ? [] : ["L", "R"].map(k => ({ thigh: bone("thigh_" + k), shin: bone("shin_" + k), foot: bone("foot_" + k) }))
+      .filter(L => L.thigh && L.shin && L.foot).map(L => Object.assign(L, { sole: fSole.filter(([b]) => b === L.foot || b.parent === L.foot) }));
     const mixer = new THREE.AnimationMixer(srcRoot);
     mixer.clipAction(clip).play();
     const n = Math.max(2, Math.round(clip.duration * fps) + 1), times = new Float32Array(n);
     const qv = new Map(db.map(b => [b, new Float32Array(n * 4)])), pv = new Float32Array(n * 3);
-    const W = new THREE.Quaternion(), PI = new THREE.Quaternion(), v = new THREE.Vector3(), wp = new THREE.Vector3();
+    const W = new THREE.Quaternion(), PI = new THREE.Quaternion(), v = new THREE.Vector3(), wp = new THREE.Vector3(), lp = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
-      const tt = Math.min(clip.duration, i / fps); times[i] = tt;
+      const tt = Math.min(clip.duration, i / fps * (clip.duration / ((n - 1) / fps))); times[i] = tt;
       mixer.setTime(tt); srcRoot.updateMatrixWorld(true);
       for (const b of db) {
         const k = key(b.name);
@@ -93,16 +154,27 @@
       }
       sHips.getWorldPosition(v);
       wp.copy(dHip0); wp.x += (v.x - sHip0.x) * ratio; wp.y += (v.y - sHip0.y) * ratio; wp.z += (v.z - sHip0.z) * ratio;
-      if (seated) wp.y = H.SEAT + (v.y - H.SEAT) * ratio;   // the bench is the same height for everyone (a child's feet dangle)
+      if (seated) wp.y = seat + (v.y - seat) * ratio;   // the bench is the same height for everyone
+      if (grounded && sSole.length && dSole.length) {
+        lp.copy(wp); dHips.parent.worldToLocal(lp); dHips.position.copy(lp); dHips.updateMatrixWorld(true);
+        wp.y += soleY(sSole) * ratio - soleY(dSole);
+      }
       dHips.parent.worldToLocal(wp); wp.toArray(pv, i * 3);
+      if (seated && legs.length) {
+        // feet flat on the floor whatever the shin length (a child's feet still dangle: at most 6 cm of reach)
+        dHips.position.copy(wp); dHips.updateMatrixWorld(true);
+        for (const L of legs) if (legToFloor(L, 0.06)) [L.thigh, L.shin, L.foot].forEach(b => b.quaternion.toArray(qv.get(b), i * 4));
+      }
     }
     mixer.stopAllAction(); mixer.uncacheRoot(srcRoot);
     db.forEach(b => b.quaternion.copy(restLocal.get(b)));
+    dHips.position.copy(restHipPos);
     dstRoot.updateMatrixWorld(true);
     const tracks = db.map(b => new THREE.QuaternionKeyframeTrack(b.name + ".quaternion", times, qv.get(b)));
     tracks.push(new THREE.VectorKeyframeTrack(dHips.name + ".position", times, pv));
-    return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+    return { clip: new THREE.AnimationClip(clip.name, clip.duration, tracks), speed: (info.speed || 0) * ratio };
   }
+  H.retarget = (srcRoot, clip, dstRoot) => retarget(srcRoot, clip, dstRoot);
 
   // ---------------- who is who ----------------
   const NAMED = [
@@ -227,6 +299,8 @@
   };
 
   // ---------------- instances ----------------
+  const GAITS = ["walk_slow", "walk", "jog", "run", "sprint"], LOCO = new Set(GAITS.concat(["crouch"]));
+  const DEFAULT_SPEED = { walk_slow: 0.9, walk: 1.2, jog: 2.9, run: 4.3, sprint: 6.5, crouch: 0.85 };
   /** Make a character. opts: {coat, seed, holo, shadow}. Returns {root, play(name, fade, speed), update(dt, dist, seen), setHolo(color)}. */
   H.make = (id, opts = {}) => {
     const t = T[id] || T[H.ids[0]];
@@ -255,17 +329,41 @@
     const actions = {};
     for (const n in clips) actions[n] = mixer.clipAction(clips[n]);
     let cur = null, acc = 0, frame = seed % 3;
-    const h = { root, id: t.root.name, mixer, actions, meshes, current: null, height: t.height };
+    const rnd = k => ((Math.imul(seed + 1, 2654435761) ^ Math.imul(k + 7, 40503)) >>> 0) % 1000 / 1000;   // stable per person
+    const pace = 0.93 + 0.14 * rnd(1);           // everyone breathes / gestures at their own tempo
+    const h = { root, id: t.root.name, mixer, actions, meshes, current: null, height: t.height, speeds: t.speeds };
     h.play = (name, fade = 0.25, speed = 1) => {
-      const a = actions[name] || actions.idle;
+      if (!actions[name]) name = LOCO.has(name) && actions.walk ? "walk" : "idle";
+      const a = actions[name];
       if (!a) return;
-      a.timeScale = speed;
+      a.timeScale = LOCO.has(name) ? speed : speed * pace;
       if (cur === a) return;
+      const prev = cur, prevName = h.current;
       a.reset(); a.enabled = true; a.setEffectiveWeight(1);
-      if (name === "idle" || name === "talk" || name === "nod" || name === "sad") a.time = (seed % 97) / 97 * a.getClip().duration;
+      const dur = a.getClip().duration;
+      // locomotion clips all start on the same footfall: carry the gait phase across (walk <-> jog <-> run), else a
+      // personal phase so a crowd never moves in step
+      if (prev && LOCO.has(name) && LOCO.has(prevName)) a.time = (prev.time / prev.getClip().duration) % 1 * dur;
+      else a.time = rnd(name.length) * dur;
       a.play();
-      if (cur) cur.crossFadeTo(a, fade, false);
+      if (prev) prev.crossFadeTo(a, fade, false);
       cur = a; h.current = name;
+    };
+    /** Walk / jog / run at speed (m/s, world units) with feet that do not slide: picks the gait whose natural speed is
+     *  nearest (with hysteresis) and sets timeScale = speed / that gait's speed for this body. scale: the group's scale
+     *  (a scaled person strides proportionally). opts.crouch: sneak. Returns the clip name. */
+    h.move = (speed, scale = 1, opts = {}) => {
+      const sp = n => (t.speeds[n] || DEFAULT_SPEED[n] || 1.2) * scale;
+      if (opts.crouch) { h.play("crouch", 0.3, Math.max(0.35, Math.min(2.4, speed / sp("crouch")))); return "crouch"; }
+      let best = null, bd = Infinity;
+      for (const n of GAITS) {
+        if (!actions[n]) continue;
+        const d = Math.abs(Math.log(speed / sp(n))) - (n === h.current ? 0.12 : 0);
+        if (d < bd) { bd = d; best = n; }
+      }
+      if (!best) best = "walk";
+      h.play(best, 0.3, Math.max(0.3, Math.min(2.2, speed / sp(best))));
+      return best;
     };
     /** dist: distance to camera (far characters animate at a lower rate); seen: on screen. */
     h.update = (dt, dist = 0, seen = true) => {

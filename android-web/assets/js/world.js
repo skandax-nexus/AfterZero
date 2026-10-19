@@ -730,6 +730,8 @@
     return 1;
   };
   const camV = { pivot: new THREE.Vector3(), want: new THREE.Vector3(), fwd: new THREE.Vector3() };
+  /** NPC route activity -> motion-capture clip (assets/models/anims.glb). Anything else idles (or listens, up close). */
+  const ACT_CLIP = { talk: "talk", work: "work", carry: "work", sit: "sit", look: "look" };
   function ensureAvatar() {
     if (P.avatar || !AZ.humans.ready) return;
     const coat = AZ.settings.arin === "crimson" || AZ.settings.arin === "charcoal" ? AZ.settings.arin : null;
@@ -805,13 +807,14 @@
     const cam = R.camera;
     ensureAvatar();
     const pv = camV.pivot, want = camV.want, fwd = camV.fwd;
-    const pyT = P.pos.y + P.height * 0.88;
+    const port = R.portrait || 0;   // portrait framing: a little further, higher and more centred (R.resize)
+    const pyT = P.pos.y + P.height * 0.88 + 0.18 * port;
     P.pivotY = P.pivotY === null || Math.abs(P.pivotY - pyT) > 3 ? pyT : P.pivotY + (pyT - P.pivotY) * Math.min(1, dt * 10);
     const cp = Math.cos(P.pitch);
     fwd.set(-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp);
-    const shoulder = 0.42, rx2 = Math.cos(P.yaw), rz2 = -Math.sin(P.yaw);
+    const shoulder = 0.42 * (1 - 0.45 * port), rx2 = Math.cos(P.yaw), rz2 = -Math.sin(P.yaw);
     pv.set(P.pos.x + rx2 * shoulder, P.pivotY, P.pos.z + rz2 * shoulder);
-    const wantDist = (P.sprint ? 3.5 : P.crouch ? 2.6 : 3.1) * (W.def.camDist || 1) * (AZ.settings.cam || 1);
+    const wantDist = (P.sprint ? 3.5 : P.crouch ? 2.6 : 3.1) * (W.def.camDist || 1) * (AZ.settings.cam || 1) * (1 + 0.16 * port);
     want.copy(pv).addScaledVector(fwd, -wantDist);
     const head = new THREE.Vector3(P.pos.x, P.pivotY, P.pos.z);
     const side = S.camProbe(W, head, pv, 0.12);           // shoulder offset blocked by a wall: pull to centre
@@ -827,15 +830,20 @@
       P.avatarGroup.position.copy(P.pos); P.fill.intensity = 1.1;
       P.avatarGroup.rotation.y = P.face;
       const a = P.avatar;
-      if (P.dying) a.play("sad", 0.2);
-      else if (!P.grounded) a.play("run", 0.2, 0.35);
-      else if (P.crouch) a.play("crouch", 0.25);
-      else if (P.moving > 4.5) a.play("run", 0.2, P.moving / 5.6);
-      else if (P.moving > 0) a.play("walk", 0.2, Math.max(0.5, P.moving / 1.55));
-      else a.play("idle", 0.3);
+      // gait from the speed Arin really travels (walls stop the legs too), feet matched to the ground (humans.move)
+      const moved = P.animPrev ? Math.hypot(P.pos.x - P.animPrev.x, P.pos.z - P.animPrev.z) / Math.max(dt, 1e-3) : 0;
+      (P.animPrev || (P.animPrev = new THREE.Vector3())).copy(P.pos);
+      P.animSpeed = (P.animSpeed || 0) + (Math.min(moved, 9) - (P.animSpeed || 0)) * Math.min(1, dt * 12);
+      const spd = P.moving > 0 ? Math.min(P.moving, P.animSpeed + 0.35) : 0;
+      P.airT = P.grounded ? 0 : (P.airT || 0) + dt;
+      if (P.dying) a.play("sad", 0.3);
+      else if (P.airT > 0.22) a.play("fall", 0.25);
+      else if (P.crouch) { if (spd > 0.15) a.move(spd, 1, { crouch: true }); else a.play("crouch", 0.3, 0); }
+      else if (spd > 0.15) a.move(spd);
+      else a.play("idle", 0.35);
       a.update(dt, 0);
     }
-    const targetFov = P.sprint ? 66 : 60;
+    const targetFov = R.fovFor(P.sprint ? 66 : 60);   // keeps the horizontal view wide enough in portrait
     if (Math.abs(cam.fov - targetFov) > 0.1) { cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 6); cam.updateProjectionMatrix(); }
 
     // ---- zones ----
@@ -883,9 +891,9 @@
       if (dP > 7) n.approached = false;
       if (n.p.human) {
         const h = n.p.human, sp = o.speed || 1.3;
-        if (walking) h.play(sp > 3 ? "run" : "walk", 0.3, sp > 3 ? sp / 5.6 : sp / 1.55);
-        else if (o.named !== false && dP < 3 && AZ.ui.speaking()) h.play("talk", 0.4);
-        else h.play(act === "talk" ? "talk" : act === "work" || act === "carry" ? "nod" : act === "sit" && h.actions.sit ? "sit" : "idle", 0.4);
+        if (walking) h.move(sp, grp.scale.y);
+        else if (o.named !== false && dP < 3 && AZ.ui.speaking()) h.play("talk", 0.5);
+        else h.play(ACT_CLIP[act] && h.actions[ACT_CLIP[act]] ? ACT_CLIP[act] : dP < 3 && o.named !== false ? "nod" : "idle", 0.5);
         const cd = R.camera.position.distanceTo(grp.position);
         h.update(dt, cd, AZ.humans.seen(grp, cd));
         if (n.tag) {
@@ -918,7 +926,7 @@
       pp.last.copy(g.position);
       pp.speed = (pp.speed || 0) + (sp - (pp.speed || 0)) * Math.min(1, dt * 8);
       if (!on) continue;
-      pp.human.play(pp.speed > 3.2 ? "run" : pp.speed > 0.25 ? "walk" : "idle", 0.3, pp.speed > 3.2 ? pp.speed / 5.6 : Math.max(0.6, pp.speed / 1.55));
+      if (pp.speed > 0.25) pp.human.move(pp.speed, g.scale.y); else pp.human.play("idle", 0.4);
       const cd = R.camera.position.distanceTo(g.position);
       pp.human.update(dt, cd, AZ.humans.seen(g, cd));
     }
@@ -962,7 +970,8 @@
       }
       if (k.p.human) {
         const moved = grp.position.distanceTo(k.lastPos || grp.position) / Math.max(dt, 1e-3); k.lastPos = (k.lastPos || new THREE.Vector3()).copy(grp.position);
-        k.p.human.play(moved > 3 ? "run" : moved > 0.3 ? "walk" : "idle", 0.25, moved > 3 ? moved / 5.6 : Math.max(0.6, moved / 1.55));
+        k.animSpeed = (k.animSpeed || 0) + (moved - (k.animSpeed || 0)) * Math.min(1, dt * 10);
+        if (k.animSpeed > 0.3) k.p.human.move(k.animSpeed, grp.scale.y); else k.p.human.play(k.wait > 0 ? "look" : "idle", 0.4);
         const cd = R.camera.position.distanceTo(grp.position);
         k.p.human.update(dt, cd, AZ.humans.seen(grp, cd, 70));
         return;
@@ -975,7 +984,13 @@
     // ---- pursuers ----
     W.pursuers.forEach(c => {
       c.p.group.visible = W.activeMask(c.mask);
-      if (c.p.human) { c.p.human.play(c.running && c.delay <= 0 && !P.dying ? "run" : "idle", 0.25, c.speed / 5.6); const cd = R.camera.position.distanceTo(c.p.group.position); c.p.human.update(dt, cd, AZ.humans.seen(c.p.group, cd, 70)); }
+      if (c.p.human) {
+        const gp = c.p.group.position, mv = c.lastPos ? Math.hypot(gp.x - c.lastPos.x, gp.z - c.lastPos.z) / Math.max(dt, 1e-3) : 0;
+        (c.lastPos || (c.lastPos = new THREE.Vector3())).copy(gp);
+        c.animSpeed = (c.animSpeed || 0) + (Math.min(mv, 12) - (c.animSpeed || 0)) * Math.min(1, dt * 10);
+        if (c.animSpeed > 0.3) c.p.human.move(c.animSpeed, c.p.group.scale.y); else c.p.human.play("idle", 0.3);
+        const cd = R.camera.position.distanceTo(gp); c.p.human.update(dt, cd, AZ.humans.seen(c.p.group, cd, 70));
+      }
       if (!c.running || P.dying) return;
       if (c.delay > 0) { c.delay -= dt; return; }
       const grp = c.p.group, d = Math.hypot(P.pos.x - grp.position.x, P.pos.z - grp.position.z);

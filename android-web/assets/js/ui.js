@@ -17,16 +17,21 @@
   // =====================================================================
   UI.build = () => {
     const hud = $("hud");
+    // Zones never overlap by construction: #top is a grid (objective | timer column | system buttons + state list;
+    // portrait wraps the timer column under them), #bz (prompt + subtitles) is placed above the controls by UI.layout.
     hud.innerHTML = `
-      <div id="obj"></div>
-      <div id="states"><span data-s="0">&lt;&lt; PAST</span><span data-s="1">[ PRESENT ]</span><span data-s="2">FUTURE &gt;&gt;</span></div>
-      <div id="timer"></div>
-      <div id="detect"><i></i><b></b></div>
-      <div id="toast"></div>
-      <div id="prompt"></div>
-      <div id="held"></div>
-      <div id="sub"></div>
-      <div id="loopbar"><i></i><span></span></div>
+      <div id="top">
+        <div id="tl"><div id="obj"></div><div id="held"></div></div>
+        <div id="tc"><div id="timer"></div><div id="loopbar"><div class="bar"><i></i></div><span></span></div><div id="detect"><div class="bar"><i></i></div><b></b></div><div id="toast"></div></div>
+        <div id="tr">
+          <div id="sys">
+            <button class="tb sys" id="bJournal" aria-label="Journal"><svg viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19M9 7.5h6"/></svg><span>JOURNAL</span></button>
+            <button class="tb sys" id="bPause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14" style="stroke-width:3"/></svg></button>
+          </div>
+          <div id="states"><span data-s="0">&lt;&lt; PAST</span><span data-s="1">[ PRESENT ]</span><span data-s="2">FUTURE &gt;&gt;</span></div>
+        </div>
+      </div>
+      <div id="bz"><div id="prompt"></div><div id="sub"></div></div>
       <div id="card"><small></small><strong></strong><em></em></div>
       <div id="reveal"><small>REVELATION</small><strong></strong><p></p></div>
     `;
@@ -60,7 +65,7 @@
   UI.detection = d => {
     const e = $("detect");
     e.style.display = d > 0.01 ? "block" : "none";
-    e.firstElementChild.style.width = Math.round(d * 100) + "%";
+    e.querySelector("i").style.width = Math.round(d * 100) + "%";
     e.classList.toggle("seen", d >= 1);
     e.lastElementChild.textContent = d >= 1 ? "SEEN - BREAK LINE OF SIGHT" : d > 0.35 ? "SUSPICIOUS" : "NOTICED";
   };
@@ -68,7 +73,7 @@
     const b = $("loopbar");
     if (!lp) { b.style.display = "none"; return; }
     b.style.display = "block";
-    b.firstElementChild.style.width = (lp.elapsed / lp.duration * 100).toFixed(1) + "%";
+    b.querySelector("i").style.width = (lp.elapsed / lp.duration * 100).toFixed(1) + "%";
     b.lastElementChild.textContent = "RECURRENCE " + String(lp.count + 1).padStart(2, "0") + "  -  resets in " + Math.ceil(lp.duration - lp.elapsed) + "s";
   };
   UI.titleCard = (a, b, c) => new Promise(res => {
@@ -119,32 +124,30 @@
   const S = () => AZ.sim.input;
   function buildTouch() {
     const t = $("touch");
+    const ico = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
     t.innerHTML = `
       <div id="lookpad"></div>
       <div id="stick"><i></i></div>
-      <button class="tb" id="bUse">USE</button>
-      <button class="tb small" id="bJump">JUMP</button>
-      <button class="tb small" id="bCrouch">CROUCH</button>
-      <button class="tb small" id="bEcho">ECHO</button>
-      <button class="tb small" id="bHum">HUM</button>
-      <div id="statebar">
-        <button class="tb state" data-s="0">&lt;&lt;<br>PAST</button>
-        <button class="tb state" data-s="1">[ ]<br>NOW</button>
-        <button class="tb state" data-s="2">&gt;&gt;<br>FUTURE</button>
-      </div>
-      <button class="tb sys" id="bJournal">JOURNAL</button>
-      <button class="tb sys" id="bPause">II</button>
+      <button class="tb" id="bUse"><span>USE</span></button>
+      <button class="tb" id="bJump">${ico("M6 12.5l6-6 6 6M6 18.5l6-6 6 6")}<span>JUMP</span></button>
+      <button class="tb" id="bCrouch">${ico("M6 6.5l6 6 6-6M5 18h14")}<span>CROUCH</span></button>
+      <button class="tb" id="bEcho">${ico("M2.5 12C5 7.5 8.2 5.5 12 5.5s7 2 9.5 6.5c-2.5 4.5-5.7 6.5-9.5 6.5S5 16.5 2.5 12zM12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z")}<span>ECHO</span></button>
+      <button class="tb" id="bHum">${ico("M9 17.5V5.5l10-2v12M9 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM19 15.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z")}<span>HUM</span></button>
+      <button class="tb state" data-s="0" id="bState0" aria-label="Past"><b>&lt;&lt;</b><span>PAST</span></button>
+      <button class="tb state" data-s="1" id="bState1" aria-label="Present"><b>[ ]</b><span>NOW</span></button>
+      <button class="tb state" data-s="2" id="bState2" aria-label="Future"><b>&gt;&gt;</b><span>FUTURE</span></button>
     `;
     const look = $("lookpad"), stick = $("stick"), knob = stick.firstElementChild;
     let stickId = null, sx = 0, sy = 0, lookId = null, lx = 0, ly = 0, tapStart = 0, tapX = 0, tapY = 0, moved = 0;
-    const R = 62;
-    // Dynamic joystick: appears where the left thumb lands (left 45% of the screen).
+    // Dynamic joystick: appears where the movement thumb lands - landscape: the near 45% of the screen;
+    // portrait: the near half below the top 30% (the upper screen stays free for looking around).
     look.addEventListener("pointerdown", e => {
       AZ.audioUnlock();
-      const leftZone = AZ.settings.left ? e.clientX > innerWidth * 0.55 : e.clientX < innerWidth * 0.45;
-      if (leftZone && stickId === null) {
+      const W = innerWidth, H = innerHeight, lefty = !!AZ.settings.left, x = lefty ? W - e.clientX : e.clientX;
+      const stickZone = LAY.port ? x < W * 0.5 && e.clientY > H * 0.3 : x < W * 0.45;
+      if (stickZone && stickId === null) {
         stickId = e.pointerId; sx = e.clientX; sy = e.clientY;
-        stick.style.left = (sx - 75) + "px"; stick.style.top = (sy - 75) + "px"; stick.classList.add("on");
+        stick.style.left = (sx - LAY.ring / 2) + "px"; stick.style.top = (sy - LAY.ring / 2) + "px"; stick.classList.add("on");
       } else if (lookId === null) {
         lookId = e.pointerId; lx = e.clientX; ly = e.clientY; tapStart = performance.now(); tapX = lx; tapY = ly; moved = 0;
       }
@@ -152,15 +155,17 @@
     });
     look.addEventListener("pointermove", e => {
       if (e.pointerId === stickId) {
+        const R = LAY.ring * 0.41;
         let dx = e.clientX - sx, dy = e.clientY - sy; const m = Math.hypot(dx, dy);
         if (m > R) { dx = dx / m * R; dy = dy / m * R; }
         knob.style.transform = `translate(${dx}px,${dy}px)`;
         S().mx = dx / R; S().my = -dy / R;
       } else if (e.pointerId === lookId) {
         const dx = e.clientX - lx, dy = e.clientY - ly;
-        // gentle acceleration: small drags precise, fast swipes turn quickly
-        const sp = Math.hypot(dx, dy), acc = 1 + Math.min(1.2, sp / 40);
-        S().lookX += dx * acc * (900 / Math.max(500, innerHeight)); S().lookY += dy * acc * (900 / Math.max(500, innerHeight));
+        // gentle acceleration: small drags precise, fast swipes turn quickly. Scaled by the SHORT screen side so
+        // turning feels the same in portrait and landscape.
+        const sp = Math.hypot(dx, dy), acc = 1 + Math.min(1.2, sp / 40), k = acc * (900 / Math.max(500, Math.min(innerWidth, innerHeight)));
+        S().lookX += dx * k; S().lookY += dy * k;
         lx = e.clientX; ly = e.clientY; moved += sp;
       }
     });
@@ -206,7 +211,61 @@
       if (keys.ArrowLeft) S().lookX -= 12; if (keys.ArrowRight) S().lookX += 12; if (keys.ArrowUp) S().lookY -= 8; if (keys.ArrowDown) S().lookY += 8;
     };
   }
-  UI.applyLayout = () => { document.body.classList.toggle("lefty", !!AZ.settings.left); document.documentElement.style.setProperty("--sub-scale", AZ.settings.sub); };
+  UI.applyLayout = () => { document.body.classList.toggle("lefty", !!AZ.settings.left); document.documentElement.style.setProperty("--sub-scale", AZ.settings.sub); UI.layout(); };
+
+  // =====================================================================
+  // Responsive control layout (portrait / landscape / left-handed). Re-run on every resize / rotation.
+  // Sizes scale with the short screen side; nothing goes under 46 px (touch target) or into the safe-area insets.
+  //   - Action cluster in the thumb corner: USE in the corner, JUMP / CROUCH / ECHO on an inner arc around it.
+  //   - Landscape: HUM continues the bottom row; the time switcher sits bottom-centre.
+  //   - Portrait: an outer "time dial" arc PAST -> NOW -> FUTURE (+ HUM on top) around the cluster, so the
+  //     switcher stays under the right thumb and off the character in the middle of the screen.
+  //   - Prompt + subtitles (#bz) are placed in the free band above / beside the controls.
+  // =====================================================================
+  const LAY = (UI.lay = { port: false, ring: 150 });
+  UI.layout = () => {
+    if (!$("bUse")) return;
+    const W = innerWidth, H = innerHeight, port = H >= W, S = Math.min(W, H), lefty = !!AZ.settings.left;
+    const cs = $("safeprobe") ? getComputedStyle($("safeprobe")) : null, ins = k => (cs ? parseFloat(cs[k]) || 0 : 0);
+    const st = ins("paddingTop"), sr = ins("paddingRight"), sb = ins("paddingBottom"), sl = ins("paddingLeft");
+    const cl = (v, a, b) => Math.max(a, Math.min(b, v)), deg = Math.PI / 180;
+    const bs = Math.round(cl(S * 0.13, 46, 64)), bu = Math.round(cl(S * 0.19, 66, 92)), bt = Math.round(cl(S * 0.14, 48, 68));
+    const g = Math.round(cl(S * 0.026, 8, 14)), m = Math.round(cl(S * 0.03, 10, 22));
+    const root = document.documentElement.style;
+    root.setProperty("--bs", bs + "px"); root.setProperty("--bu", bu + "px"); root.setProperty("--bt", bt + "px");
+    LAY.port = port; LAY.ring = Math.round(cl(S * 0.38, 130, 180)); root.setProperty("--stick", LAY.ring + "px");
+    document.body.classList.toggle("portrait", port);
+    // positions as [dx, dy, size]: centre measured from the thumb-side edge and from the bottom edge
+    const near = m + (lefty ? sl : sr), ux = near + bu / 2, uy = m + sb + bu / 2;
+    const r1 = Math.max(bu / 2 + g + bs / 2, (bs + g) / (2 * Math.sin(22.5 * deg)));
+    const at = (r, a, size) => [ux + r * Math.cos(a * deg), uy + r * Math.sin(a * deg), size];
+    const P = { bUse: [ux, uy, bu], bJump: at(r1, 0, bs), bCrouch: at(r1, 45, bs), bEcho: at(r1, 90, bs) };
+    const place = (id, x, y, size) => { const e = $(id); e.style.left = Math.round(x - size / 2) + "px"; e.style.top = Math.round(y - size / 2) + "px"; };
+    const toScreen = p => [lefty ? p[0] : W - p[0], H - p[1], p[2]];
+    let band;
+    if (port) {
+      const r2 = r1 + bs / 2 + g + bt / 2;
+      Object.assign(P, { bState0: at(r2, 0, bt), bState1: at(r2, 30, bt), bState2: at(r2, 60, bt), bHum: at(r2, 90, bs) });
+      const top = Math.max(...Object.values(P).map(p => p[1] + p[2] / 2));
+      band = { near: m + (lefty ? sl : sr), far: m + (lefty ? sr : sl), bottom: top + g };
+    } else {
+      P.bHum = at(r1 + bs + g, 0, bs);
+      // time switcher bottom-centre; slide it away from the cluster if a narrow screen would make them touch
+      const step = bt + Math.round(g * 1.5), clusterEdge = P.bHum[0] + bs / 2 + g;
+      let cx = W / 2; const half = step + bt / 2;
+      if (W - cx - half < clusterEdge) cx = W - clusterEdge - half;   // in thumb-side coordinates
+      const sy = H - (m + sb) - bt / 2;
+      [0, 1, 2].forEach(i => { const x = cx + (i - 1) * step; place("bState" + i, lefty ? W - x : x, sy, bt); });
+      const bottom = m + sb + bt + g;
+      const obst = Object.values(P).filter(p => p[1] + p[2] / 2 > bottom);
+      const side = Math.max(...obst.map(p => p[0] + p[2] / 2)) + g, farSafe = m + (lefty ? sr : sl);
+      band = W - 2 * side >= W * 0.5 ? { near: side, far: side, bottom } : { near: side, far: farSafe, bottom };
+    }
+    Object.keys(P).forEach(id => { const [x, y, s] = toScreen(P[id]); place(id, x, y, s); });
+    const bz = $("bz");
+    if (bz) { bz.style.left = (lefty ? band.near : band.far) + "px"; bz.style.right = (lefty ? band.far : band.near) + "px"; bz.style.bottom = band.bottom + "px"; }
+    LAY.band = band; LAY.sizes = { bs, bu, bt, g, m };
+  };
 
   // =====================================================================
   // Panels: document, choices, journal, pause, settings, menu
@@ -225,7 +284,7 @@
         <div class="eyebrow">AFTERZERO - GAME 01</div><h1>THE FIRST CYCLE</h1>
         <p class="tag">A city repeats a catastrophe. A watch that doesn't tick. A letter in your own handwriting.</p>
         <div class="mbtns"></div><p class="diff"></p></div>
-        <div class="chapters"></div></div>
+        <div class="chapters"><div class="chead"><span>CHAPTERS</span><button class="btn sq" data-a="close">Back</button></div><div class="clist"></div></div></div>
       <div id="fade"></div>
     `;
     $("pDoc").querySelector(".btn").onclick = () => closeDoc();
@@ -278,7 +337,7 @@
     if ($("pSettings").classList.contains("show")) { show("pSettings", false); return; }
     if (docOpen) { closeDoc(); return; }
     if ($("pJournal").classList.contains("show")) { show("pJournal", false); UI.lock(false); return; }
-    if ($("pMenu").classList.contains("show")) return;
+    if ($("pMenu").classList.contains("show")) { UI.showChapters(false); return; }
     UI.pause(!UI.paused);
   };
   window.azPause = () => { if (AZ.game.inLevel()) UI.pause(true); AZ.game.saveNow(); };
@@ -292,6 +351,7 @@
     ["Arin's coat", () => ({ crimson: "CRIMSON", charcoal: "CHARCOAL" })[AZ.settings.arin] || "SEA-GREEN (original)", d => { const o = ["teal", "crimson", "charcoal"]; AZ.settings.arin = o[(Math.max(0, o.indexOf(AZ.settings.arin)) + d + 3) % 3]; AZ.sim.rebuildAvatar(); }],
     ["Graphics", () => ["AUTO (adapts to keep it smooth)", "LOW - 30 fps battery saver", "MEDIUM", "HIGH - shadows"][AZ.settings.quality + 1], d => { AZ.settings.quality = ((AZ.settings.quality + 1 + d + 4) % 4) - 1; }],
     ["Thumb layout", () => (AZ.settings.left ? "LEFT-HANDED (look on left)" : "RIGHT-HANDED (move on left)"), () => { AZ.settings.left = !AZ.settings.left; }],
+    ["Screen rotation", () => ({ landscape: "LANDSCAPE", portrait: "PORTRAIT" })[AZ.settings.orient] || "AUTO (turn the device)", d => { const o = ["auto", "landscape", "portrait"]; AZ.settings.orient = o[(Math.max(0, o.indexOf(AZ.settings.orient || "auto")) + d + 3) % 3]; UI.applyOrientation(); }, () => !!(window.AZNative && AZNative.setOrientation)],
     ["Vibration", () => (AZ.settings.vibe ? "ON" : "OFF"), () => { AZ.settings.vibe = !AZ.settings.vibe; }],
     ["Subtitle size", () => Math.round(AZ.settings.sub * 100) + "%", d => { AZ.settings.sub = Math.min(1.6, Math.max(0.8, +(AZ.settings.sub + d * 0.1).toFixed(1))); }],
     ["Volume", () => Math.round(AZ.settings.volume * 100) + "%", d => { AZ.settings.volume = Math.min(1, Math.max(0, +(AZ.settings.volume + d * 0.1).toFixed(1))); }],
@@ -299,6 +359,7 @@
   function buildSettings() {
     const rows = $("pSettings").querySelector(".rows"); rows.innerHTML = "";
     ROWS.forEach(r => {
+      if (r[3] && !r[3]()) return;   // row only where the platform supports it
       const row = el("div", "row", "", rows);
       el("span", "lbl", r[0], row);
       const minus = el("button", "btn sq", "&lt;", row);
@@ -312,19 +373,23 @@
   UI.openSettings = () => { ROWS.forEach(r => r.refresh && r.refresh()); show("pSettings", true); };
 
   // ---------------- main menu ----------------
+  UI.showChapters = on => { $("pMenu").classList.toggle("chap", !!on); };
+  /** Android: AUTO follows the sensor (all four orientations), or lock to landscape / portrait. */
+  UI.applyOrientation = () => { try { if (window.AZNative && AZNative.setOrientation) AZNative.setOrientation({ landscape: 6, portrait: 7 }[AZ.settings.orient] || 10); } catch (e) { } };
   UI.menu = on => {
-    show("pMenu", on);
+    show("pMenu", on); if (!on) UI.showChapters(false);
     document.body.classList.toggle("inmenu", on);
     if (!on) return;
     const m = $("pMenu"), btns = m.querySelector(".mbtns"); btns.innerHTML = "";
     const add = (label, fn) => { const b = el("button", "btn big", label, btns); b.onclick = () => { AZ.audioUnlock(); AZ.sfx("use"); fn(); }; };
     if (AZ.save.has()) add("Continue", () => AZ.game.continueGame());
     add("New game", () => AZ.game.newGame());
-    add("Chapters", () => m.querySelector(".chapters").classList.toggle("show"));
+    add("Chapters", () => UI.showChapters(!m.classList.contains("chap")));
     add("Settings", () => UI.openSettings());
     if (window.AZNative && AZNative.quit) add("Quit", () => AZNative.quit());
     m.querySelector(".diff").textContent = "Difficulty: " + AZ.diff.label(AZ.settings.difficulty) + "  (change in Settings)";
-    const ch = m.querySelector(".chapters"); ch.innerHTML = "";
+    m.querySelector(".chead [data-a=close]").onclick = () => UI.showChapters(false);
+    const ch = m.querySelector(".clist"); ch.innerHTML = "";
     AZ.levels.forEach((L, i) => { const b = el("button", "btn chap", "<small>" + esc(L.chapter) + "</small>" + esc(L.title), ch); b.onclick = () => { AZ.audioUnlock(); AZ.game.load(i); }; });
   };
   AZ.on("settings", AZ.persistent(() => { const d = document.querySelector("#pMenu .diff"); if (d) d.textContent = "Difficulty: " + AZ.diff.label(AZ.settings.difficulty) + "  (change in Settings)"; }));
