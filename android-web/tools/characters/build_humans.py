@@ -205,7 +205,7 @@ def g2(d2, s):
 # ----------------------------------------------------------------------------------------------------------------
 # texture layout: re-packed MakeHuman islands + a square of material cells
 # ----------------------------------------------------------------------------------------------------------------
-PART_SCALE = dict(face=2.5, scalp=0.9, earL=1.0, earR=1.0, mouth=0.5, torso=0.85, legL=0.8, legR=0.8, armL=0.9, armR=0.9,
+PART_SCALE = dict(face=2.5, scalp=0.9, lidL=1.0, lidR=1.0, mouth=0.5, torso=0.85, legL=0.8, legR=0.8, armL=0.9, armR=0.9,
                   handL=1.0, handR=1.0, footL=0.3, footR=0.3)
 PATCH = 0.22            # side of the cell square (fraction of the atlas)
 CELL_NAMES = ["hair", "shoe", "sole", "colA", "colB", "acc", "trim", "metal", "lash", "skin", "glow", "shirt"]
@@ -284,8 +284,8 @@ def layout():
                     part[fi] = "face" if (rel[2] > -0.03 and -0.16 < rel[1] < 0.07) else "scalp"
                 elif len(fs) > 350:
                     part[fi] = "mouth"
-                else:
-                    part[fi] = "ear" + ("L" if P[vs].mean(0)[0] > 0 else "R")
+                else:   # the two small head islands are the eye sockets (inner lids)
+                    part[fi] = "lid" + ("L" if P[vs].mean(0)[0] > 0 else "R")
             elif dom.startswith("hand"):
                 part[fi] = "hand" + dom[-1]
             elif dom.startswith(("foot", "toe")):
@@ -321,7 +321,11 @@ def layout():
             if rot:
                 uv = np.stack([(b1[1] - b0[1]) * s - uv[:, 1], uv[:, 0]], 1)
             FUV[fi] = uv + np.array([x, y])
-    return dict(part=part, FUV=FUV, patch=place["patch"][:2], g=lo)
+    # ears (inside the scalp island): lateral bumps behind the eyes
+    hv = np.array(sorted({v for fi, k in part.items() if k == "scalp" for v in F[fi][0]}))
+    q = P[hv] - eye
+    ears = hv[(np.abs(q[:, 0]) > 0.071) & (q[:, 1] > -0.05) & (q[:, 1] < 0.034) & (q[:, 2] < -0.055) & (q[:, 2] > -0.115)]
+    return dict(part=part, FUV=FUV, patch=place["patch"][:2], g=lo, ears=ears)
 
 
 def cell_rect(name):
@@ -383,9 +387,9 @@ class Landmarks:
         self.lip_w = (q[:, 0].max() - q[:, 0].min()) / 2
         self.lip_line = _profile(q[:, 0], q[:, 1], np.mean, 11)
         self.lip_z = q[:, 2].max()
-        ear = sorted({v for fi, k in lay["part"].items() if k == "earL" for v in F[fi][0]})
-        self.earL = P[ear].mean(0)
-        self.earR = self.earL * np.array([-1, 1, 1])
+        ears = lay["ears"]
+        self.earL = P[ears[P[ears, 0] > 0]].mean(0)
+        self.earR = P[ears[P[ears, 0] < 0]].mean(0)
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -450,6 +454,8 @@ class Body:
         self.arms = self.aw["L"] + self.aw["R"]
         bodyv = mh.group_vertices("body")
         self.bodyv = np.array(bodyv)
+        self.ear = np.zeros(len(self.P))
+        self.ear[layout()["ears"]] = 1.0
 
 
 NECK = {  # neckline: (height above the neck base at the back, front dip) in metres (1.75 m body)
@@ -530,10 +536,14 @@ def fields(c, B):
         w = np.clip(B.hw + B.W[:, BI["neck"]], 0, 1)
         cov["scarf"] = w * (rel[:, 1] - line) - (1 - w) * 0.03
         style = "none" if style not in ("bun",) else "bun_hidden"
+    hwt = np.clip((head - 0.2) / 0.3, 0, 1)      # smooth blend: no ragged edge where head / neck weights meet
     if style not in ("none", "bun_hidden"):
-        cov["hair"] = np.where(head > 0.35, rel[:, 1] - hairline(rel, style, male, old), -0.1)
+        cov["hair"] = hwt * (rel[:, 1] - hairline(rel, style, male, old)) - (1 - hwt) * 0.05
     elif style == "bun_hidden" or hat in ("hood",):
-        cov["_hairpaint"] = np.where(head > 0.35, rel[:, 1] - hairline(rel, c.get("hair", "short"), male, old), -0.1)
+        cov["_hairpaint"] = hwt * (rel[:, 1] - hairline(rel, c.get("hair", "short"), male, old)) - (1 - hwt) * 0.05
+    for key in ("hair", "_hairpaint"):     # never hair on the ears
+        if key in cov:
+            cov[key] = cov[key] - B.ear * 0.05
     cov["_style"] = style
     return cov
 
@@ -649,9 +659,10 @@ def build_layer(B, name, cov, iso=0.0, faces=None, min_area=3e-9):
     return L
 
 
+
 def layer_normals(L, B):
     N = vertex_normals(L.pos, L.faces)
-    N = N + B.N[L.base]
+    N = N + (L.nb if getattr(L, "nb", None) is not None else B.N[L.base])
     return N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
 
 
@@ -879,6 +890,11 @@ def dilate(img, mask, n=6):
     return img, mask
 
 
+def shoe_hex(c):
+    """One footwear colour for the painted boot shaft and the shoe (cell): no mismatch."""
+    return c.get("shoeColor", c.get("trimColor", "2a1d16"))
+
+
 def fabric(c, key, q, seed, L):
     fab = c.get("fabric", {}).get(key, "wool" if key in ("top", "colA") else "twill" if key in ("bottom", "colB") else "leather")
     if fab == "leather":
@@ -919,7 +935,8 @@ def paint(c, B, cov, res, path_out):
     red = 0.02 * (vnoise(pos, 40, seed + 9) - 0.5)
     col = col * lum[:, None] * (1 + np.outer(red, [1, -0.4, -0.6]))
     warm = np.array([1.0, 0.86, 0.82])
-    isface = np.isin(part, ["face", "scalp", "earL", "earR", "mouth"])
+    isface = np.isin(part, ["face", "scalp", "lidL", "lidR", "mouth"])
+    earf = fld(B.ear)
 
     def tint(m, rgb, k=1.0):
         nonlocal col
@@ -939,7 +956,7 @@ def paint(c, B, cov, res, path_out):
         tint(0.07 * g2(((pos - ue) ** 2 * np.array([0.6, 2.5, 1])).sum(1), 0.009) * front * isface, [0.88, 0.86, 0.9])
     nose = np.array([0, L.eye[1] - 0.045, L.eye[2] + 0.03])
     tint(0.3 * g2(((pos - nose) ** 2 * np.array([1, 0.8, 0.5])).sum(1), 0.011) * front * isface, warm)
-    tint(0.18 * np.isin(part, ["earL", "earR"]), warm)
+    tint(0.2 * earf, warm)
     tint(0.04 * ss(0.02, 0.06, rel[:, 1]) * front * isface, [1.03, 1.02, 1.0])          # forehead a touch lighter
     # ---- lips ----
     lip_c = hexc(c.get("lip", "b06a62" if not male else "a8706a"))
@@ -976,11 +993,11 @@ def paint(c, B, cov, res, path_out):
         ym = np.interp(dx, ux, uy)
         inside = (dx > ux.min() - 0.001) & (dx < ux.max() + 0.002)
         dd = dy - ym
-        thick = 0.0009 + 0.0007 * ss(-0.004, 0.012, dx)
+        thick = 0.0006 + 0.0007 * ss(-0.006, 0.012, dx)
         lash = ss(-0.0006, 0.0, dd) * (1 - ss(thick * 0.5, thick + 0.0004, dd)) * inside * near
         lash *= ss(ux.min() - 0.001, ux.min() + 0.003, dx) * ss(ux.max() + 0.0012, ux.max() - 0.001, dx)
         wing = g2(((dx - ux.max() + 0.0005) / 0.0018) ** 2 + ((dd - 0.0004) / 0.001) ** 2, 1.0) * near
-        over(np.clip(lash * 0.85 + wing * 0.12, 0, 1), lash_c)
+        over(np.clip(lash * 0.82 + wing * 0.05, 0, 1), lash_c)
         crease = g2((dd - 0.0058 - 0.0012 * ss(-0.01, 0.01, dx)) ** 2, 0.0013) * inside * near * ss(-0.016, -0.008, dx)
         tint(crease * 0.16, [0.82, 0.74, 0.72])
         tint(g2(((dd - 0.003) / 0.003) ** 2, 1.0) * inside * near * 0.05, [0.92, 0.88, 0.9])      # lid
@@ -1030,7 +1047,7 @@ def paint(c, B, cov, res, path_out):
         ax_ = np.abs(pos[:, 0])
         my = np.interp(0, xs, ys)
         top_b = np.interp(ax_, [0, 0.012, 0.03, 0.048, 0.062, 0.08], [my + 0.017, my + 0.013, my + 0.012, my + 0.026, L.eye[1] - 0.034, L.eye[1] - 0.012])
-        reg = ss(-0.002, 0.008, top_b - pos[:, 1]) * ss(-0.1, -0.06, rel[:, 2]) * ss(my - 0.13, my - 0.10, pos[:, 1]) * isface * ~np.isin(part, ['earL', 'earR'])
+        reg = ss(-0.002, 0.008, top_b - pos[:, 1]) * ss(-0.1, -0.06, rel[:, 2]) * ss(my - 0.13, my - 0.10, pos[:, 1]) * isface * (earf < 0.5)
         reg *= 1 - lipm
         reg *= 1 - 0.85 * g2(t ** 2 + ((d + 0.0) / 0.012) ** 2, 1.0) * (np.abs(t) < 1.2)
         dots = (hash01(pos, 2600, seed) > 0.55).astype(float) * 0.7 + 0.3
@@ -1040,13 +1057,13 @@ def paint(c, B, cov, res, path_out):
     # ---- scalp, hairline feathering ----
     style = cov["_style"]
     hcov = fld(cov["hair"]) if "hair" in cov else (fld(cov["_hairpaint"]) if "_hairpaint" in cov else None)
-    ears = np.isin(part, ["earL", "earR"])
+    ears = earf > 0.4
     if hcov is not None:
         st = hair_strands(c, rel, style, seed, fine=1.6)
         st2 = hair_strands(c, rel, style, seed + 1.7, fine=3.0)
         band = (hcov < 0) & (hcov > -0.007) & ~ears
         u = ss(-0.007, 0.0, hcov)
-        fa = (u ** 1.6 * ss(0.62 - 0.35 * u, 0.7 - 0.35 * u, st2) * 0.7 + 0.18 * u ** 2) * band
+        fa = (u ** 1.3 * ss(0.8 - 0.22 * u, 0.86 - 0.22 * u, st2) * 0.75 + 0.1 * u ** 3) * band   # sparse fine hairs
         over(fa, hair_c * 0.9 + skin * 0.1)
         under = (hcov >= 0) & ~ears
         st3 = hair_strands(c, rel, style, seed + 4.1, fine=2.2)
@@ -1061,7 +1078,7 @@ def paint(c, B, cov, res, path_out):
     # ---------------- garments (outermost layer wins) ----------------
     shirt_c = hexc(c.get("shirtColor", "d8d0c4"))
     order = [("hood", c.get("colorA")), ("scarf", c.get("accentColor")), ("top", c.get("colorA", "444a55")),
-             ("shaft", c.get("shoeColor", "2a1d16")), ("inshoe", c.get("shoeColor", "2a1d16")), ("bottom", c.get("colorB", "2a2a30"))]
+             ("shaft", shoe_hex(c)), ("inshoe", shoe_hex(c)), ("bottom", c.get("colorB", "2a2a30"))]
     taken = np.zeros(len(px), bool)
     for key, chex in order:
         if key not in cov:
@@ -1121,7 +1138,7 @@ def paint_cells(c, img, mask, res, seed):
     th = np.arctan2(dye, dxe)
     iris_c = hexc(c.get("eyes", "5a4030"))
     ir, pr = c.get("irisR", 0.33), c.get("pupilR", 0.12)
-    sclera = np.array([0.84, 0.81, 0.77]) * (1 - 0.22 * ss(0.55, 1.0, r))[..., None]
+    sclera = np.array([0.75, 0.71, 0.67]) * (1 - 0.3 * ss(0.45, 1.0, r))[..., None]
     sclera = sclera * (1 - 0.06 * ss(0.5, 1.0, np.abs(dxe))[..., None] * np.array([0.2, 1, 1]))   # pinkish corners
     p3 = np.stack([np.cos(th) * 3, np.sin(th) * 3, r * 5], -1).reshape(-1, 3)
     fib = (0.5 + 0.28 * np.sin(th * 41 + 2.5 * vnoise(p3, 1.1, seed).reshape(r.shape)) + 0.22 * np.sin(th * 97 + 4 * vnoise(p3 * 1.7, 1.3, seed + 2).reshape(r.shape)))
@@ -1140,7 +1157,7 @@ def paint_cells(c, img, mask, res, seed):
     put(gx, gy, col)
     # ---- flat-ish cells ----
     hair_c = hexc(c.get("hairColor", "2e2119"))
-    shoe = hexc(c.get("shoeColor", c.get("trimColor", "2a1d16")))
+    shoe = hexc(shoe_hex(c))
     cells = {"hair": hair_c, "shoe": shoe, "sole": shoe * 0.35 + 0.02, "colA": hexc(c.get("colorA", "444a55")), "colB": hexc(c.get("colorB", "2a2a30")),
              "acc": hexc(c.get("accentColor", "8a3a2a")), "trim": hexc(c.get("trimColor", "2a1d16")), "metal": hexc(c.get("metalColor", "b09060")),
              "lash": hexc(c.get("browColor", c.get("hairColor", "2e2119"))) * 0.3 + 0.015, "skin": hexc(c["skin"]),
@@ -1299,7 +1316,7 @@ def head_frame(B):
     return Hp
 
 
-def hair_sheet(B, c, ref, a0, a1, y_top, y_bot, clear=0.004, flare=0.03, seg=30, rows=8, narrow=0.0, name="hair_sheet"):
+def hair_sheet(B, c, ref, a0, a1, y_top, y_bot, clear=0.004, flare=0.03, seg=30, rows=8, narrow=0.0, tip=0.0, vol=0.008, name="hair_sheet"):
     """Hanging hair: an arc of strands (azimuth a0..a1 deg, 0 = front, narrowing by `narrow` deg per side toward the
     ends) from y_top down to y_bot, hugging the reference surface (head + hair shell + neck/shoulders, MH coords)."""
     L = B.L
@@ -1310,15 +1327,18 @@ def hair_sheet(B, c, ref, a0, a1, y_top, y_bot, clear=0.004, flare=0.03, seg=30,
     verts, uvs_v = [], []
     for r in range(rows):
         t = r / (rows - 1)
-        yy = y_top + (y_bot - y_top) * t
         lo, hi = a0 + narrow * t, a1 - narrow * t
         for k in range(seg):
             u = k / (seg - 1)
+            yb = y_bot + tip * abs(2 * u - 1) ** 1.5          # longer at the centre of the back, shorter at the sides
+            yy = y_top + (yb - y_top) * t
             a = lo + (hi - lo) * u
             m = (np.abs(((th_v - a + 180) % 360) - 180) < 9) & (np.abs(ref[:, 1] - yy) < 0.018)
             base_r = rad_v[m].max() if m.any() else 0.08
             edge = min(u, 1 - u)
-            rr = base_r + clear + flare * t ** 1.4 - 0.004 * ss(0.15, 0.0, edge)
+            # starts inside the hair shell (hidden) and grows through it: a layered edge, not a visible seam
+            rr = base_r + clear + (vol + 0.006) * ss(0.0, 0.4, t) + flare * ss(0.4, 1.0, t) ** 1.4 - 0.004 * ss(0.15, 0.0, edge) * ss(0.2, 0.5, t)
+            rr += 0.0028 * (0.6 * math.sin(math.radians(a) * 23 + 1.3) + 0.4 * math.sin(math.radians(a) * 47)) * ss(0.15, 0.5, t)
             ar = math.radians(a)
             verts.append([math.sin(ar) * rr, yy, cz + math.cos(ar) * rr])
             uvs_v.append((u, 1 - t))
@@ -1335,16 +1355,27 @@ def hair_sheet(B, c, ref, a0, a1, y_top, y_bot, clear=0.004, flare=0.03, seg=30,
                 P[i, 2] = cz + (P[i, 2] - cz) * f
     jit = 0.01 * np.sin(np.arange(seg) * 2.3) * np.sin(np.arange(seg) * 0.7 + 1)
     P[(rows - 1) * seg:, 1] += jit
+    # outer surface: thickness grows from ~0 at the top (no step where it leaves the shell) to 6 mm at the ends
+    th = 0.0012 + 0.006 * ss(0.25, 0.6, np.repeat(np.arange(rows) / (rows - 1), seg))
+    rad = np.hypot(P[:, 0], P[:, 2] - cz)
+    Q = P.copy()
+    Q[:, 0] *= (rad + th) / rad
+    Q[:, 2] = cz + (P[:, 2] - cz) * (rad + th) / rad
+    n = rows * seg
+    verts = np.concatenate([P, Q])
     faces = []
     for r in range(rows - 1):
         for k in range(seg - 1):
             i = r * seg + k
-            faces.append([i, i + 1, i + seg + 1, i + seg])
-    uv = np.array(uvs_v)
-    o = mesh_from(name, to_bl_np(P), faces, [cell_uv("hair", uv[v, 0] * 0.7 + 0.15, uv[v, 1]) for f in faces for v in f])
-    sol = o.modifiers.new("solid", "SOLIDIFY")
-    sol.thickness, sol.offset = 0.006, 1
-    BC.apply_modifiers(o)
+            faces.append([i, i + 1, i + seg + 1, i + seg])                     # inner (faces the head)
+            faces.append([n + i, n + i + seg, n + i + seg + 1, n + i + 1])     # outer
+    edges = [((rows - 1) * seg + k, (rows - 1) * seg + k + 1) for k in range(seg - 1)]
+    edges += [(r * seg, (r + 1) * seg) for r in range(rows - 1)] + [(r * seg + seg - 1, (r + 1) * seg + seg - 1) for r in range(rows - 1)]
+    for i, j in edges:   # close the ends (both windings: visible from either side)
+        faces.append([i, j, n + j, n + i])
+        faces.append([i, n + i, n + j, j])
+    uv = np.array(uvs_v + uvs_v)
+    o = mesh_from(name, to_bl_np(verts), faces, [cell_uv("hair", uv[v, 0] * 0.7 + 0.15, uv[v, 1]) for f in faces for v in f])
     BC.smooth(o)
     set_mask(o, (0, 0, 1))
     pts = obj_world_verts(o)
@@ -1418,6 +1449,33 @@ def band_from_loop(name, L, loop, B, up, out, h, cell):
     return o2
 
 
+def rope_from_loop(name, L, loop, radius, cell, closed=True):
+    """A soft rolled hem: a thin tube along a layer border loop (sits on the edge, weighted like it)."""
+    P = L.pos[loop]
+    n = len(P)
+    seg = 6
+    verts = []
+    for i in range(n):
+        t = P[(i + 1) % n] - P[i - 1]
+        t /= max(np.linalg.norm(t), 1e-9)
+        a = np.cross(t, [0, 1, 0]) if abs(t[1]) < 0.9 else np.cross(t, [1, 0, 0])
+        a /= np.linalg.norm(a)
+        b = np.cross(t, a)
+        for k in range(seg):
+            ang = 2 * math.pi * k / seg
+            verts.append(P[i] + (a * math.cos(ang) + b * math.sin(ang)) * radius)
+    faces = []
+    for i in range(n if closed else n - 1):
+        j = (i + 1) % n
+        for k in range(seg):
+            faces.append([i * seg + k, i * seg + (k + 1) % seg, j * seg + (k + 1) % seg, j * seg + k])
+    o = mesh_from(name, to_bl_np(np.array(verts)), faces)
+    BC.smooth(o)
+    piece(o, cell, (0, 0, 0), "xz")
+    WSTORE[o.name] = np.repeat(L.W[loop], seg, axis=0)
+    return o
+
+
 def extras(c, B, cov, layers):
     """Fitted pieces: skirts / coat tails, belt, collar, scarf, buttons, bag, hats, hair pieces, glasses, mask."""
     out = []
@@ -1440,7 +1498,17 @@ def extras(c, B, cov, layers):
         bot_z = max(0.07, top_z - length * H)
         legs = body_bl[np.isin(np.array(B.vb)[B.bodyv], ["hips", "thigh_L", "thigh_R", "spine", "shin_L", "shin_R"])]
         rings = []
-        c0, R0 = ring_fit(cloth_pts, top_z, 0.012)
+        under = top not in ("dress", "robe") and bottom != "trousers" and "top" in lay_pts   # skirt tucked under a top
+        if under:      # starts hidden under the top, then clears the top's (flared) hem
+            tp = lay_pts["top"][np.abs(lay_pts["top"][:, 0]) < 0.22]
+            zh = tp[:, 2].min()
+            _, Rh = ring_fit(tp, zh + 0.012, 0.012)
+            inner = np.concatenate([lay_pts.get("bottom", np.zeros((0, 3))), body_bl[np.isin(np.array(B.vb)[B.bodyv], ["hips", "spine"])]])
+            c0, R0 = ring_fit(inner, top_z, 0.012)
+            top_z = max(top_z, zh + 0.05)
+            c0, R0 = ring_fit(inner, top_z, 0.012)
+        else:
+            c0, R0 = ring_fit(cloth_pts, top_z, 0.012)
         fl_k = {"coat": 0.3, "robe": 0.42, "jacket": 0.12, "uniform": 0.1}.get(top, 0.4 if bottom == "longskirt" else 0.36)
         prevR = R0
         for i in range(8):
@@ -1448,10 +1516,15 @@ def extras(c, B, cov, layers):
             z = top_z + (bot_z - top_z) * t
             ci, Ri = ring_fit(legs, max(z, J["knee_L"].z), 0.02)
             Ri = np.maximum(Ri, prevR * (0.985 if z > hip_z else 1.0)) if i else R0
+            if under and i and z < zh + 0.02:
+                Ri = np.maximum(Ri, Rh + 0.006)
             fl = 1 + t * fl_k
             pad = 0.004 + 0.012 * t
             rings.append((z, (0.0, c0[1] * (1 - t) + (ci[1] + 0.004) * t), Ri * (fl if i else 1.0), pad))
             prevR = Ri
+        if under:   # emerge right under the top's hem edge (the visible line is the hem itself)
+            rings = [(zh + 0.03, rings[0][1], R0, 0.003), (zh - 0.004, rings[0][1], np.maximum(R0, Rh - 0.003), 0.0),
+                     (zh - 0.026, rings[0][1], np.maximum(R0, Rh + 0.004), 0.004)] + [r for r in rings[1:] if r[0] < zh - 0.05]
         o = ring_tube("skirt", rings)
         if top in ("coat", "jacket") and bottom == "trousers":   # coats / jackets open at the front below the waist
             bm = bmesh.new()
@@ -1468,14 +1541,14 @@ def extras(c, B, cov, layers):
         WSTORE[o.name] = skirt_weights(obj_world_verts(o), J, H, top_z, long=length > 0.4)
         out.append(o)
         if "apron" in accs:
-            ap = ring_tube("apron", [(z, cc, R * 1.03, p + 0.004) for z, cc, R, p in rings[:6]])
+            ap = ring_tube("apron", [(z, cc, R * 1.05, p + 0.008) for z, cc, R, p in rings[:6]])
             bm = bmesh.new()
             bm.from_mesh(ap.data)
             bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().y > rings[0][1][1] - 0.03], context="FACES")
             bm.to_mesh(ap.data)
             bm.free()
             piece(ap, "acc", (0, 0, 0), "xz")
-            WSTORE[ap.name] = skirt_weights(obj_world_verts(ap), J, H, top_z, long=False)
+            WSTORE[ap.name] = skirt_weights(obj_world_verts(ap), J, H, top_z, long=length > 0.4)
             out.append(ap)
     elif "apron" in accs:
         c0, R0 = ring_fit(cloth_pts, waist_z, 0.012)
@@ -1588,6 +1661,12 @@ def extras(c, B, cov, layers):
     hat, style = c.get("hat"), cov["_style"]
     vol = SHELL.get(style, 0.0)
     out += hat_pieces(c, B, layers)
+    for key, cell, rad in (("scarf", "acc", 0.0045), ("hood", "colA", 0.006)):
+        Lx = layers.get(key)
+        if Lx is not None:
+            loops = Lx.boundary_loops()
+            if loops:
+                out.append(rope_from_loop(key + "_hem", Lx, max(loops, key=len), rad, cell))
     if hat == "headscarf":   # knot at the nape with two short tails
         nape = hc + V((0, hry * 0.95, -0.07))
         bm = bmesh.new()
@@ -1634,14 +1713,13 @@ def extras(c, B, cov, layers):
             out.append(o)
         if style in ("long", "bob"):
             ref = [head_frame(B), B.P[B.bodyv][np.isin(np.array(B.vb)[B.bodyv], ["neck", "chest", "clavicle_L", "clavicle_R"])]]
-            for key in ("hair", "top"):
-                if layers.get(key) is not None:
-                    ref.append(layers[key].pos)
+            if layers.get("top") is not None:
+                ref.append(layers["top"].pos)
             ref = np.concatenate(ref)
             if style == "long":
-                out.append(hair_sheet(B, c, ref, 82, 278, L.eye[1] + 0.015, L.eye[1] - 0.25 * H / 1.75, clear=0.002, flare=0.02, narrow=38, rows=9))
+                out.append(hair_sheet(B, c, ref, 84, 276, L.eye[1] + 0.105, L.eye[1] - 0.27 * H / 1.75, clear=0.003, flare=0.02, narrow=36, rows=15, tip=0.07, seg=34, vol=vol))
             else:
-                out.append(hair_sheet(B, c, ref, 70, 290, L.eye[1] + 0.02, L.eye[1] - 0.075, clear=0.002, flare=0.012, rows=6))
+                out.append(hair_sheet(B, c, ref, 70, 290, L.eye[1] + 0.105, L.eye[1] - 0.078, clear=0.003, flare=0.012, rows=12, tip=0.012, vol=vol))
     if "glasses" in accs:
         for e in (L.eyeL, L.eyeR):
             bm = bmesh.new()
@@ -1745,10 +1823,11 @@ def skirt_weights(pts, J, H, top_z, long=False):
     carries its half of the skirt instead of poking through it), with a little shin toward a long hem."""
     W = np.zeros((len(pts), len(BONE_NAMES)))
     t = np.clip((top_z - pts[:, 2]) / (0.2 * H), 0, 1)
-    lw = t ** 0.8
+    back = np.clip((pts[:, 1] - J["pelvis"].y) / 0.08, 0, 1)        # the back panel stays a little more with the hips
+    lw = t ** 0.8 * (1 - 0.25 * back)
     sx = np.clip(pts[:, 0] / 0.05, -1, 1)
     kz = J["knee_L"].z
-    below = np.clip((kz - pts[:, 2]) / max(kz - 0.08, 0.1), 0, 1) * (0.3 if long else 0.2)
+    below = np.clip((kz + 0.02 - pts[:, 2]) / 0.22, 0, 1) * 0.75     # below the knee the hem hangs from the shin
     W[:, BI["hips"]] = 1 - lw
     for s_, side in (("L", 0.5 + 0.5 * sx), ("R", 0.5 - 0.5 * sx)):
         W[:, BI["thigh_" + s_]] = lw * side * (1 - below)
@@ -1780,6 +1859,10 @@ def build(c, tex_dir):
     H = B.H
     # ---- skin (with a 2 cm band under every garment border) ----
     hide = hide_field(cov)
+    for key in ("scarf", "hood"):      # ears under a headscarf / hood are tucked away
+        if key in cov:
+            earv = layout()["ears"]
+            hide[earv] = np.maximum(hide[earv], np.where(cov[key][earv] > -0.01, 0.05, hide[earv]))
     skin = build_layer(B, "skin", -hide, iso=-0.02)
     hpaint = cov.get("hair", cov.get("_hairpaint"))
     sk = ss(-0.006, 0.0, -hide[skin.base])
@@ -1823,20 +1906,34 @@ def build(c, tex_dir):
             if style == "swept":
                 shape = shape + 0.7 * g2(((rel[:, 2] - 0.0) / 0.04) ** 2 + ((rel[:, 1] - 0.075) / 0.035) ** 2, 1.0)
             taubin(Lh, 3, pin=Lh.cov <= 0.0005)
-            offset_layer(Lh, B, 0.0004 + vol * shape * ss(0.0, 0.03, Lh.cov))
+            seed = (sum(map(ord, c["id"])) % 97) * 0.37
+            clumps = hair_strands(c, rel, style, seed, fine=0.6) - 0.5     # combed clumps: relief along the strands
+            offset_layer(Lh, B, 0.0004 + vol * (shape + 0.45 * clumps) * ss(0.0, 0.03, Lh.cov))
             taubin(Lh, 2, pin=Lh.cov <= 0.0005)
             Lh.mask[:, 2] = 1
             layers["hair"] = Lh
-    for key, off in (("scarf", 0.015), ("hood", 0.022)):
+    for key, off in (("scarf", 0.015), ("hood", 0.016)):
         if key in cov:
-            faces = [fi for fi in B.faces if lay_parts[fi] not in ("mouth",)]
+            faces = [fi for fi in B.faces if lay_parts[fi] not in ("mouth", "lidL", "lidR")]
             Lx = build_layer(B, key, cov[key], faces=faces)
             if Lx is not None:
+                # cloth passes over the ears: press them flat against the side of the skull
+                rel0 = B.P - B.L.eye
+                sk = B.P[(np.abs(rel0[:, 1] - 0.03) < 0.006) & (rel0[:, 2] < -0.05) & (rel0[:, 2] > -0.12) & (B.hw > 0.5)]
+                xs = np.abs(sk[:, 0] - B.L.eye[0]).max() if len(sk) else 0.072
+                em = B.ear[Lx.base] > 0.5
+                Lx.nb = B.N[Lx.base].copy()
+                if em.any():
+                    sx = np.sign(Lx.pos[em, 0] - B.L.eye[0])
+                    Lx.pos[em, 0] = B.L.eye[0] + sx * np.minimum(np.abs(Lx.pos[em, 0] - B.L.eye[0]), xs)
+                    Lx.nb[em] = np.stack([sx, np.zeros_like(sx), np.zeros_like(sx)], 1)
                 taubin(Lx, 10 if key == "hood" else 14)
                 rel = Lx.pos - B.L.eye
                 bump = 0.0
                 if key == "scarf" and c.get("hair") == "bun":
                     bump = 0.03 * g2(rel[:, 0] ** 2 + ((rel[:, 1] - 0.07) / 1.0) ** 2 + ((rel[:, 2] + 0.15) / 0.6) ** 2, 0.035)
+                if key == "hood":   # snug at the face opening, loose and a little peaked behind
+                    bump = 0.022 * ss(0.0, 0.07, Lx.cov) + 0.012 * g2(rel[:, 0] ** 2 + ((rel[:, 1] - 0.06) / 1.2) ** 2 + ((rel[:, 2] + 0.12) / 0.8) ** 2, 0.04)
                 offset_layer(Lx, B, off * (0.35 + 0.65 * ss(0.0, 0.02, Lx.cov)) + bump)
                 taubin(Lx, 2)
                 layers[key] = Lx
@@ -1867,6 +1964,20 @@ def build(c, tex_dir):
     decimate_protected(mesh, B, budget(c), face_keep=0.75 if budget(c) <= 9000 else 1.0)
     arm["character"] = c["id"]
     return arm, mesh
+
+
+def select_class(mesh, cls, which):
+    """Select one decimation class; open borders (garment hems, hairline, boot tops, collars) stay unselected so the
+    collapse never touches them (they keep their smooth snapped shape)."""
+    bm = bmesh.from_edit_mesh(mesh.data)
+    for f in bm.faces:
+        f.select_set(cls(f.calc_center_median()) == which)
+    bm.select_flush_mode()
+    for e in bm.edges:
+        if e.is_boundary:
+            for v in e.verts:
+                v.select_set(False)
+    bmesh.update_edit_mesh(mesh.data)
 
 
 def decimate_protected(mesh, B, target, face_keep=1.0):
@@ -1904,12 +2015,13 @@ def decimate_protected(mesh, B, target, face_keep=1.0):
         for which, ratio in (("body", body_k), ("head", head_k), ("face", face_keep)):
             if ratio >= 0.999:
                 continue
-            bm = bmesh.from_edit_mesh(mesh.data)
-            for f in bm.faces:
-                f.select_set(cls(f.calc_center_median()) == which)
-            bm.select_flush_mode()
-            bmesh.update_edit_mesh(mesh.data)
+            select_class(mesh, cls, which)
             bpy.ops.mesh.decimate(ratio=float(np.clip(ratio, 0.05, 1.0)))
+        n2 = counts()
+        tot2 = sum(n2.values())
+        if tot2 > target * 1.01:   # land on the budget: the body takes the overshoot
+            select_class(mesh, cls, "body")
+            bpy.ops.mesh.decimate(ratio=float(np.clip((n2["body"] - (tot2 - target)) / max(n2["body"], 1), 0.3, 1.0)))
     bpy.ops.mesh.select_all(action="DESELECT")
     bpy.ops.object.mode_set(mode="OBJECT")
     print("  decimate", c_id(mesh), n, "->", sum(len(p.vertices) - 2 for p in mesh.data.polygons), "tris (target", target, ")", flush=True)

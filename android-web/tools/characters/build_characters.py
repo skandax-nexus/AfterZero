@@ -1156,13 +1156,14 @@ REST = {}   # reference-rig measurements (filled by bake_clips) for poses that m
 
 
 def pose_sit(t, H):
-    """Seated on a ~0.46 m bench: thighs forward ~86 deg, knees ~86 deg, feet flat on the floor, hands resting on the
+    """Seated on a ~0.46 m bench: thighs forward ~81 deg, knees ~81 deg, feet flat on the floor, hands resting on the
     thighs, slow breathing and a little head life. The hips drop so the ankles keep their rest height (feet on the
-    floor); for the reference body that puts the pelvis ~0.55 m up and the seat contact ~0.46 m."""
+    floor); for the reference body that puts the pelvis ~0.54 m up and the seat contact ~0.45 m (the prologue benches
+    are 0.466 m: a lower pelvis would sink into the cushion)."""
     P = {}
     br = math.sin(2 * math.pi * t)
     look = math.sin(2 * math.pi * t * 0.5)
-    th, sh = 86.0, 2.0          # thigh / shin angle forward from hanging straight down
+    th, sh = 81.0, 0.0          # thigh / shin angle forward from hanging straight down
     P["hips"] = qaxis(X, 0)
     P["spine"] = qaxis(X, -5 + 0.8 * br)
     P["chest"] = qaxis(X, 4 - 1.4 * br)
@@ -1175,11 +1176,24 @@ def pose_sit(t, H):
         P["foot_" + k] = qaxis(X, sh) @ qaxis(Z, -spread * 0.5)
         P["toe_" + k] = qaxis(X, 0)
         P["clavicle_" + k] = qaxis(Y, side(k) * (0.8 * br - 2))
-        P["upperarm_" + k] = qaxis(X, -24) @ qaxis(Y, side(k) * 44) @ qaxis(Z, -side(k) * 4)
-        P["forearm_" + k] = qaxis(X, -58 - 1.5 * br) @ qaxis(Z, side(k) * 8)
-        P["hand_" + k] = qaxis(X, -6) @ qaxis(Y, side(k) * 10)
-    # hips height so the ankles stay at their rest height: hip joint = ankle + thigh*cos(th) + shin*cos(sh)
-    hj = REST.get("ankle", 0.085 * H / 1.7) + REST.get("thigh", 0.245 * H) * math.cos(math.radians(th)) + REST.get("shin", 0.25 * H) * math.cos(math.radians(sh))
+    # arms: aim each bone at a world direction (upper arm down the side, forearm forward onto the thigh, hand on it),
+    # converted to parent-relative through the chain (the rest pose already has the forearms angled forward)
+    for k in "LR":
+        sd = side(k)
+        chain = P["hips"] @ P["spine"] @ P["chest"] @ P["clavicle_" + k]
+        rd = REST.get("dirs", {})
+        aim = lambda bn, d: V(rd.get(bn + k, (sd * 0.6, -0.1, -0.8))).normalized().rotation_difference(V(d).normalized())
+        Wu = aim("upperarm_", (sd * 0.07, -0.26, -1.0))
+        Wf = aim("forearm_", (-sd * 0.2, -1.0, -0.42 - 0.01 * br))
+        Wh = aim("hand_", (-sd * 0.12, -1.0, -0.75))
+        P["upperarm_" + k] = chain.inverted() @ Wu
+        P["forearm_" + k] = Wu.inverted() @ Wf
+        P["hand_" + k] = Wf.inverted() @ Wh
+    # hips height so the ankles keep their rest height (feet on the floor), from the real rest bone directions
+    rd = REST.get("dirs", {})
+    td = P["thigh_L"] @ V(rd.get("thigh_L", (0, 0, -1)))
+    sv = P["thigh_L"] @ P["shin_L"] @ V(rd.get("shin_L", (0, 0, -1)))
+    hj = REST.get("ankle", 0.085 * H / 1.7) - REST.get("thigh", 0.245 * H) * td.z - REST.get("shin", 0.25 * H) * sv.z
     drop = REST.get("hipj", 0.53 * H) - hj
     return P, V((0, 0.0, -drop + 0.002 * br))
 
@@ -1201,7 +1215,7 @@ def bake_clips(arm, H):
     b = arm.data.bones
     if "thigh_L" in b and "shin_L" in b and "foot_L" in b:
         REST.update(hipj=b["thigh_L"].head_local.z, thigh=b["thigh_L"].length, shin=b["shin_L"].length, ankle=b["foot_L"].head_local.z,
-                    pelvis=b["hips"].head_local.z)
+                    pelvis=b["hips"].head_local.z, dirs={n: tuple((b[n].tail_local - b[n].head_local).normalized()) for n in b.keys()})
     arm.animation_data_create()
     for name, frames, fn in CLIPS:
         act = bpy.data.actions.new(name)
